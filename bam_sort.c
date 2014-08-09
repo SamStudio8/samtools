@@ -404,6 +404,7 @@ static void trans_tbl_init(bam_hdr_t* out, bam_hdr_t* translate, trans_tbl_t* tb
         text += matches[0].rm_eo; // next!
     }
     regfree(&pg_id);
+
     // need to translate PP's on the fly in second pass because they may not be in correct order and need complete tbl->pg_trans to do this
     // for each line {
     // with ID replaced with tranformed_id and PP's transformed using the translation table
@@ -469,6 +470,25 @@ static void trans_tbl_init(bam_hdr_t* out, bam_hdr_t* translate, trans_tbl_t* tb
         free(data);
         rg_iter = kl_next(rg_iter);
     }
+
+    // Get comment lines
+    regex_t co_search;
+    regcomp(&co_search, "^@CO\t([!-)+-<>-~][ !-~]*)", REG_EXTENDED|REG_NEWLINE);
+    text = translate->text;
+    while(1) { // foreach co in translate's header
+        if (regexec(&co_search, text, 2, matches, 0) != 0) break;
+
+        if(matches[1].rm_so != matches[1].rm_eo && out != translate){
+            // If comment is not blank or from the first input BAM
+            //NOTE  This currently won't filter out blank comments if they appear
+            //      in the first input BAM as these are automatically included when
+            //      hout is assigned as hin before the merge begins.
+            kputc('\n', &out_text);
+            kputsn(text+matches[0].rm_so, matches[0].rm_eo-matches[0].rm_so, &out_text);
+        }
+        text += matches[0].rm_eo; // next!
+    }
+    regfree(&co_search);
 
     regfree(&rg_pg);
     kl_destroy(hdrln,pg_list);
