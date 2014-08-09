@@ -480,11 +480,17 @@ static void trans_tbl_init(bam_hdr_t* out, bam_hdr_t* translate, trans_tbl_t* tb
 
         if(matches[1].rm_so != matches[1].rm_eo && out != translate){
             // If comment is not blank or from the first input BAM
-            //NOTE  This currently won't filter out blank comments if they appear
-            //      in the first input BAM as these are automatically included when
-            //      hout is assigned as hin before the merge begins.
+            //NOTE  This currently won't filter out blank comments or append
+            //      filenames if they appear in the first input BAM as these are
+            //      automatically included when hout is assigned as hin before
+            //      the merge begins.
             kputc('\n', &out_text);
-            kputsn(text+matches[0].rm_so, matches[0].rm_eo-matches[0].rm_so, &out_text);
+            kputsn(text+matches[0].rm_so, matches[1].rm_so-matches[0].rm_so, &out_text);
+            kputc('[', &out_text);
+            kputs(curr_fn, &out_text);
+            kputc(']', &out_text);
+            kputc(' ', &out_text);
+            kputsn(text+matches[1].rm_so, matches[1].rm_eo-matches[1].rm_so, &out_text);
         }
         text += matches[0].rm_eo; // next!
     }
