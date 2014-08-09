@@ -228,7 +228,7 @@ static void pretty_header(char** text_in_out, int32_t text_len)
     *text_in_out = output;
 }
 
-static void trans_tbl_init(bam_hdr_t* out, bam_hdr_t* translate, trans_tbl_t* tbl, bool merge_rg, bool merge_pg)
+static void trans_tbl_init(bam_hdr_t* out, bam_hdr_t* translate, trans_tbl_t* tbl, bool merge_rg, bool merge_pg, const char *curr_fn)
 {
     // No need to translate header into itself
     if (out == translate) { merge_rg = merge_pg = true; }
@@ -659,7 +659,7 @@ int bam_merge_core2(int by_qname, const char *out, const char *mode, const char 
         }
         hin = sam_hdr_read(fp[i]);
         if (hout == NULL) hout = hin;
-        trans_tbl_init(hout, hin, translation_tbl+i, flag & MERGE_COMBINE_RG, flag & MERGE_COMBINE_PG);
+        trans_tbl_init(hout, hin, translation_tbl+i, flag & MERGE_COMBINE_RG, flag & MERGE_COMBINE_PG, fn[i]);
         if (hin != hout) bam_hdr_destroy(hin);
         if ((translation_tbl+i)->lost_coord_sort && !by_qname) {
             fprintf(stderr, "[bam_merge_core] Order of targets in file %s caused coordinate sort to be lost\n", fn[i]);
