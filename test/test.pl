@@ -147,7 +147,7 @@ sub cmd
 sub test_cmd
 {
     my ($opts,%args) = @_;
-    if ( !exists($args{out}) )
+    if ( !exists($args{out}) && !$args{no_out})
     {
         if ( !exists($args{in}) ) { error("FIXME: expected out or in key\n"); }
         $args{out} = "$args{in}.out";
@@ -159,6 +159,7 @@ sub test_cmd
     print "\t$args{cmd}\n";
 
     my ($ret,$out,$err) = _cmd("$args{cmd}");
+
     if ( $args{want_fail}? ($ret == 0) : ($ret != 0) ) { failed($opts,%args,msg=>$test); return; }
     if ( $$opts{redo_outputs} && -e "$$opts{path}/$args{out}" )
     {
@@ -191,32 +192,34 @@ sub test_cmd
         }
     }
 
-    # check stdout
-    my $exp = '';
-    if ( open(my $fh,'<',"$$opts{path}/$args{out}") )
-    {
-        my @exp = <$fh>;
-        $exp = join('',@exp);
-        close($fh);
-    }
-    elsif ( !$$opts{redo_outputs} ) { failed($opts,%args,msg=>$test,reason=>"$$opts{path}/$args{out}: $!"); return; }
+    if( !$args{no_out} ){
+        # check stdout
+        my $exp = '';
+        if ( open(my $fh,'<',"$$opts{path}/$args{out}") )
+        {
+            my @exp = <$fh>;
+            $exp = join('',@exp);
+            close($fh);
+        }
+        elsif ( !$$opts{redo_outputs} ) { failed($opts,%args,msg=>$test,reason=>"$$opts{path}/$args{out}: $!"); return; }
 
-    if ( $exp ne $out )
-    {
-        open(my $fh,'>',"$$opts{path}/$args{out}.new") or error("$$opts{path}/$args{out}.new");
-        print $fh $out;
-        close($fh);
-        if ( !-e "$$opts{path}/$args{out}" )
+        if ( $exp ne $out )
         {
-            rename("$$opts{path}/$args{out}.new","$$opts{path}/$args{out}") or error("rename $$opts{path}/$args{out}.new $$opts{path}/$args{out}: $!");
-            print "\tthe file with expected output does not exist, creating new one:\n";
-            print "\t\t$$opts{path}/$args{out}\n";
+            open(my $fh,'>',"$$opts{path}/$args{out}.new") or error("$$opts{path}/$args{out}.new");
+            print $fh $out;
+            close($fh);
+            if ( !-e "$$opts{path}/$args{out}" )
+            {
+                rename("$$opts{path}/$args{out}.new","$$opts{path}/$args{out}") or error("rename $$opts{path}/$args{out}.new $$opts{path}/$args{out}: $!");
+                print "\tthe file with expected output does not exist, creating new one:\n";
+                print "\t\t$$opts{path}/$args{out}\n";
+            }
+            else
+            {
+                failed($opts,%args,msg=>$test,reason=>"The outputs stdout differ:\n\t\t$$opts{path}/$args{out}\n\t\t$$opts{path}/$args{out}.new");
+            }
+            return;
         }
-        else
-        {
-            failed($opts,%args,msg=>$test,reason=>"The outputs stdout differ:\n\t\t$$opts{path}/$args{out}\n\t\t$$opts{path}/$args{out}.new");
-        }
-        return;
     }
     # check stderr
     if ( exists($args{err}) ) {
@@ -2154,9 +2157,21 @@ sub test_merge
 
     # Merge 1 - Sadly iterator API doesn't work with SAM files, expected fail
     test_cmd($opts,out=>'merge/1.merge.expected',cmd=>"$$opts{bin}/samtools merge -s 1 - $$opts{path}/dat/test_input_1_a.sam $$opts{path}/dat/test_input_1_b.sam $$opts{path}/dat/test_input_1_c.sam", expect_fail=>1);
+
     # Merge 2 - Standard 3 file BAM merge all files presented on the command line
-    test_cmd($opts,out=>'merge/2.merge.expected.bam',cmd=>"$$opts{bin}/samtools merge -s 1 - $$opts{path}/dat/test_input_1_a.bam $$opts{path}/dat/test_input_1_b.bam $$opts{path}/dat/test_input_1_c.bam");
-    # Merge 3 - Standard 3 file BAM merge 2 files in fofn 1 on command line
+    # Create clean copy of expected SAM file and use sed to insert the full test data path
+    system("cp $$opts{path}/merge/2.merge.expected.sam $$opts{tmp}/2.merge.expected.sam");
+    system("sed -i 's,EXPECTED_PATH,$$opts{path},' $$opts{tmp}/2.merge.expected.sam");
+    run_view_test($opts,
+        msg => "Merge 2: Standard 3 file BAM merge all files presented on CLI",
+        cmd => "merge",
+        args => ['-s', '1', '-', "$$opts{path}/dat/test_input_1_a.bam", "$$opts{path}/dat/test_input_1_b.bam", "$$opts{path}/dat/test_input_1_c.bam"],
+        redirect => 1,
+        out => "$$opts{path}/2.merge.bam",
+        compare_sam => "$$opts{tmp}/2.merge.expected.sam"
+    );
+
+    # Set up FOFN for Merge 3
     open(my $fofn, "$$opts{path}/merge/test_3.fofn");
     my ($tmpfile_fh, $tmpfile_filename) = tempfile(UNLINK => 1);
 
@@ -2164,7 +2179,23 @@ sub test_merge
         print $tmpfile_fh "$$opts{path}/$_";
     }
     close($tmpfile_fh);
-    test_cmd($opts,out=>'merge/3.merge.expected.bam', err=>'merge/3.merge.expected.err',cmd=>"$$opts{bin}/samtools merge -s 1 -b $tmpfile_filename - $$opts{path}/dat/test_input_1_a.bam");
+
+    # Merge 3a - Check correct stderr for standard 3 file BAM merge 2 files in fofn 1 on command line
+    test_cmd($opts,no_out=>1,err=>'merge/3.merge.expected.err',cmd=>"$$opts{bin}/samtools merge -s 1 -b $tmpfile_filename - $$opts{path}/dat/test_input_1_a.bam");
+
+    # Merge 3 - Standard 3 file BAM merge 2 files in fofn 1 on command line
+    # Create clean copy of expected SAM file and use sed to insert the full test data path
+    system("cp $$opts{path}/merge/3.merge.expected.sam $$opts{tmp}/3.merge.expected.sam");
+    system("sed -i 's,EXPECTED_PATH,$$opts{path},' $$opts{tmp}/3.merge.expected.sam");
+    run_view_test($opts,
+        msg => "Merge 3: Standard 3 file BAM merge, 2 files in FOFN and 1 presented on CLI",
+        cmd => "merge",
+        args => ['-s', '1', '-b', $tmpfile_filename, '-', "$$opts{path}/dat/test_input_1_a.bam"],
+        redirect => 1,
+        out => "$$opts{path}/3.merge.bam",
+        compare_sam => "$$opts{tmp}/3.merge.expected.sam"
+    );
+
 }
 
 sub test_fixmate
