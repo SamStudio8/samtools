@@ -135,6 +135,20 @@ typedef struct
 }
 stats_info_t;
 
+typedef struct {
+    double fwd_ins_above_baseline_pct;
+    double fwd_ins_below_baseline_pct;
+
+    double fwd_del_above_baseline_pct;
+    double fwd_del_below_baseline_pct;
+
+    double rev_ins_above_baseline_pct;
+    double rev_ins_below_baseline_pct;
+
+    double rev_del_above_baseline_pct;
+    double rev_del_below_baseline_pct;
+} bamcheck_stats_t;
+
 typedef struct
 {
     // Dimensions of the quality histogram holder (quals_1st,quals_2nd), GC content holder (gc_1st,gc_2nd),
@@ -211,6 +225,7 @@ typedef struct
     char* split_name;
 
     stats_info_t* info;             // Pointer to options and settings struct
+    bamcheck_stats_t *bamcheck;     // Pointer to bamcheck struct
 
 }
 stats_t;
@@ -1074,6 +1089,19 @@ void output_stats(FILE *to, stats_t *stats, int sparse)
     fprintf(to, "SN\tpairs with other orientation:\t%ld\n", (long)nisize_other);
     fprintf(to, "SN\tpairs on different chromosomes:\t%ld\n", (long)stats->nreads_anomalous/2);
 
+    //TODO(samstudio8): Currently assumes a user will always run bamcheckR style stats
+    fprintf(to, "SN\tfwd.percent.insertions.above.baseline:\t%f\n", stats->bamcheck->fwd_ins_above_baseline_pct);
+    fprintf(to, "SN\tfwd.percent.insertions.below.baseline:\t%f\n", stats->bamcheck->fwd_ins_below_baseline_pct);
+
+    fprintf(to, "SN\tfwd.percent.deletions.above.baseline:\t%f\n", stats->bamcheck->fwd_del_above_baseline_pct);
+    fprintf(to, "SN\tfwd.percent.deletions.below.baseline:\t%f\n", stats->bamcheck->fwd_del_below_baseline_pct);
+
+    fprintf(to, "SN\trev.percent.insertions.above.baseline:\t%f\n", stats->bamcheck->rev_ins_above_baseline_pct);
+    fprintf(to, "SN\trev.percent.insertions.below.baseline:\t%f\n", stats->bamcheck->rev_ins_below_baseline_pct);
+
+    fprintf(to, "SN\trev.percent.deletions.above.baseline:\t%f\n", stats->bamcheck->rev_del_above_baseline_pct);
+    fprintf(to, "SN\trev.percent.deletions.below.baseline:\t%f\n", stats->bamcheck->rev_del_below_baseline_pct);
+
     int ibase,iqual;
     if ( stats->max_len<stats->nbases ) stats->max_len++;
     if ( stats->max_qual+1<stats->nquals ) stats->max_qual++;
@@ -1461,6 +1489,7 @@ void destroy_split_stats(khash_t(c2stats) *split_hash)
 stats_info_t* stats_info_init(int argc, char *argv[])
 {
     stats_info_t* info = calloc(1, sizeof(stats_info_t));
+
     info->nisize = 8000;
     info->isize_main_bulk = 0.99;   // There are always outliers at the far end
     info->gcd_bin_size = 20e3;
@@ -1473,6 +1502,26 @@ stats_info_t* stats_info_init(int argc, char *argv[])
 
     return info;
 }
+
+bamcheck_stats_t* bamcheck_stats_init()
+{
+    bamcheck_stats_t* bamcheck = calloc(1, sizeof(bamcheck_stats_t));
+
+    bamcheck->fwd_ins_above_baseline_pct = 0;
+    bamcheck->fwd_ins_below_baseline_pct = 0;
+
+    bamcheck->fwd_del_above_baseline_pct = 0;
+    bamcheck->fwd_del_below_baseline_pct = 0;
+
+    bamcheck->rev_ins_above_baseline_pct = 0;
+    bamcheck->rev_ins_below_baseline_pct = 0;
+
+    bamcheck->rev_del_above_baseline_pct = 0;
+    bamcheck->rev_del_below_baseline_pct = 0;
+
+    return bamcheck;
+}
+
 
 int init_stat_info_fname(stats_info_t* info, const char* bam_fname, const htsFormat* in_fmt)
 {
@@ -1515,6 +1564,9 @@ static void init_stat_structs(stats_t* stats, stats_info_t* info, const char* gr
     // This saves us having to pass the stats_info_t to every function
     stats->info = info;
 
+    // Set up a bamcheck structure for storing additional calculations
+    stats->bamcheck = bamcheck_stats_init();
+
     // Init structures
     //  .. coverage bins and round buffer
     if ( info->cov_step > info->cov_max - info->cov_min + 1 )
@@ -1549,6 +1601,176 @@ static void init_stat_structs(stats_t* stats, stats_info_t* info, const char* gr
     realloc_rseq_buffer(stats);
     if ( targets )
         init_regions(stats, targets);
+}
+
+int cmpfunc (const void * a, const void * b)
+{
+       return ( *(uint64_t*)a - *(uint64_t*)b );
+}
+
+static uint64_t* copy_arr(uint64_t *source, int n, int new_n, int filter){
+    uint64_t *dest;
+    dest = calloc(new_n,sizeof(uint64_t));
+
+    size_t i = 0;
+    size_t j = 0;
+    for (; i < n; i++) {
+        if ( source[i] == 0 && filter > 0 ) {
+            continue;
+        }
+        dest[j] = source[i];
+        j++;
+    }
+    return dest;
+
+}
+
+int64_t med_triplet(int64_t a, int64_t b, int64_t c){
+    if (a < b) {
+        if (c < b){
+            // C[A]B or A[C]B
+            if (a >= c) return a;
+            return c;
+        }
+    }
+    else {
+        if (c > b){
+            // B[A]C or B[C]A
+            if (a <= c) return a;
+            return c;
+        }
+    }
+    return b;
+}
+
+typedef struct {
+    double pct_above_baseline;
+    double pct_below_baseline;
+    uint64_t total_count;
+} bamcheck_cycles_t;
+
+static bamcheck_cycles_t* bamcheck_cycles(uint64_t *cycles_arr, int n, int k){
+
+    bamcheck_cycles_t *result = calloc(1, sizeof(bamcheck_cycles_t));
+
+    uint64_t *count;
+    uint64_t baseline[n];
+
+    size_t i;
+    for(i = 0; i < n; i++){
+        baseline[i] = 0;
+    }
+
+    uint64_t smooth_start[k/2];
+    uint64_t smooth_end[k/2];
+    for(i = 0; i < k/2; i++){
+        smooth_start[i] = 0;
+        smooth_end[i] = 0;
+    }
+
+    // Copy counts for the known number of valid IC lines (n)
+    count = copy_arr(cycles_arr, n, n, 0);
+
+    // Medianize sliding windows of k, beginning at i=k/2 (the first valid full window)
+    uint64_t *k_window;
+    for(i = (k/2); i < n-(k/2); i++){
+        k_window = copy_arr(&count[i-(k/2)], k, k, 0);
+        qsort(k_window, k, sizeof(uint64_t), cmpfunc);
+        baseline[i] = k_window[k/2];
+        free(k_window);
+    }
+
+    // Keep ends ( k/2 elements on each end )
+    memcpy(baseline, &count[0], sizeof(uint64_t) * (k/2));
+    memcpy(&baseline[n-(k/2)], &count[n-(k/2)], sizeof(uint64_t) * (k/2));
+
+    // Smooth 1st and n-1th element
+    smooth_start[1] = med_triplet(baseline[0], baseline[1], baseline[2]);
+    smooth_end[(k/2)-2] = med_triplet(baseline[n-1], baseline[n-2], baseline[n-3]);
+
+    // Smooth remaining elements to k/2
+
+    // Smooth values for first and last k/2 elements (where the windows were too
+    //  large to medianize initially). Work inwards starting with element pair (2, n-2).
+    for(i = 2; i < (k/2)+1; i ++){
+        int j = 2 * i - 1;
+
+        k_window = copy_arr(&baseline[0], j, j, 0);
+        qsort(k_window, j, sizeof(uint64_t), cmpfunc);
+        smooth_start[i-1] = k_window[j/2];
+        free(k_window);
+
+        k_window = copy_arr(&baseline[n-j], j, j, 0);
+        qsort(k_window, j, sizeof(uint64_t), cmpfunc);
+        smooth_end[(k/2)-i] = k_window[j/2];
+        free(k_window);
+    }
+
+    // First and last element with Tukey Rule
+    smooth_start[0] = med_triplet(baseline[0], smooth_start[1], 3 * (int)smooth_start[1] - 2 * (int)smooth_start[2]);
+    smooth_end[(k/2)-1] = med_triplet(baseline[n-1], smooth_end[(k/2)-2], 3 * (int)smooth_end[(k/2)-2] - 2 * (int)smooth_end[(k/2)-3]);
+
+    // Move smoothed values over baseline
+    memcpy(baseline, &smooth_start[0], sizeof(uint64_t) * (k/2));
+    memcpy(&baseline[n-(k/2)], &smooth_end[0], sizeof(uint64_t) * (k/2));
+
+    // Calculate baseline and counts above/below
+    int64_t count_minus_baseline[n];
+    uint64_t count_above_baseline = 0;
+    uint64_t count_below_baseline = 0;
+    uint64_t count_total = 0;
+    for(i = 0; i < n; i++){
+        count_total += count[i];
+        count_minus_baseline[i] = count[i] - baseline[i];
+        if (count_minus_baseline[i] > 0){
+            count_above_baseline += count_minus_baseline[i];
+        }
+        else if (count_minus_baseline[i] < 0){
+            count_below_baseline += count_minus_baseline[i]*-1;
+        }
+    }
+
+    result->pct_above_baseline = (double)count_above_baseline / (double)count_total * 100;
+    result->pct_below_baseline = (double)count_below_baseline / (double)count_total * 100;
+    result->total_count = count_total;
+
+    free(count);
+
+    return result;
+}
+
+static void calculate_bamcheck(stats_t *curr_stats){
+
+    int k = 25;
+    int ilen;
+    int ic_lines = 0;
+    for (ilen=0; ilen<=curr_stats->nbases; ilen++){
+        if ( curr_stats->ins_cycles_1st[ilen]>0 || curr_stats->ins_cycles_2nd[ilen]>0 || curr_stats->del_cycles_1st[ilen]>0 || curr_stats->del_cycles_2nd[ilen]>0 ){
+            ic_lines++;
+        }
+    }
+
+    bamcheck_cycles_t *result;
+    result = bamcheck_cycles(curr_stats->ins_cycles_1st, ic_lines, k);
+    curr_stats->bamcheck->fwd_ins_above_baseline_pct = result->pct_above_baseline;
+    curr_stats->bamcheck->fwd_ins_below_baseline_pct = result->pct_below_baseline;
+    free(result);
+
+    result = bamcheck_cycles(curr_stats->ins_cycles_2nd, ic_lines, k);
+    curr_stats->bamcheck->rev_ins_above_baseline_pct = result->pct_above_baseline;
+    curr_stats->bamcheck->rev_ins_below_baseline_pct = result->pct_below_baseline;
+    free(result);
+
+    result = bamcheck_cycles(curr_stats->del_cycles_1st, ic_lines, k);
+    curr_stats->bamcheck->fwd_del_above_baseline_pct = result->pct_above_baseline;
+    curr_stats->bamcheck->fwd_del_below_baseline_pct = result->pct_below_baseline;
+    free(result);
+
+    result = bamcheck_cycles(curr_stats->del_cycles_2nd, ic_lines, k);
+    curr_stats->bamcheck->rev_del_above_baseline_pct = result->pct_above_baseline;
+    curr_stats->bamcheck->rev_del_below_baseline_pct = result->pct_below_baseline;
+    free(result);
+
 }
 
 static stats_t* get_curr_split_stats(bam1_t* bam_line, khash_t(c2stats)* split_hash, stats_info_t* info, char* targets)
@@ -1712,6 +1934,10 @@ int main_stats(int argc, char *argv[])
     }
 
     round_buffer_flush(all_stats, -1);
+
+    // Supplement stats with bamcheck
+    calculate_bamcheck(all_stats);
+
     output_stats(stdout, all_stats, sparse);
     if (info->split_tag)
         output_split_stats(split_hash, bam_fname, sparse);
