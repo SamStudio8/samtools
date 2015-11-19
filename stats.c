@@ -136,6 +136,35 @@ typedef struct
 stats_info_t;
 
 typedef struct {
+    uint64_t n;
+    double *delta;
+
+    double above_total;
+    uint64_t above_n;
+    double above_max;
+    double above_min;
+
+    double below_total;
+    uint64_t below_n;
+    double below_max;
+    double below_min;
+
+    uint64_t total_count;
+
+    double max_baseline_deviation;
+    double total_mean_deviation;
+} bamcheck_baseline_delta;
+
+typedef struct {
+    double mean_above_baseline;
+    double mean_below_baseline;
+    double max_above_baseline;
+    double max_below_baseline;
+    double max_baseline_deviation;
+    double total_mean_deviation;
+} bamcheck_bcd_t;
+
+typedef struct {
     double fwd_ins_above_baseline_pct;
     double fwd_ins_below_baseline_pct;
 
@@ -147,6 +176,12 @@ typedef struct {
 
     double rev_del_above_baseline_pct;
     double rev_del_below_baseline_pct;
+
+    bamcheck_bcd_t *bcd_a;
+    bamcheck_bcd_t *bcd_c;
+    bamcheck_bcd_t *bcd_g;
+    bamcheck_bcd_t *bcd_t;
+
 } bamcheck_stats_t;
 
 typedef struct
@@ -1102,6 +1137,36 @@ void output_stats(FILE *to, stats_t *stats, int sparse)
     fprintf(to, "SN\trev.percent.deletions.above.baseline:\t%f\n", stats->bamcheck->rev_del_above_baseline_pct);
     fprintf(to, "SN\trev.percent.deletions.below.baseline:\t%f\n", stats->bamcheck->rev_del_below_baseline_pct);
 
+    fprintf(to, "SN\tA.percent.mean.above.baseline:\t%f\n", stats->bamcheck->bcd_a->mean_above_baseline);
+    fprintf(to, "SN\tC.percent.mean.above.baseline:\t%f\n", stats->bamcheck->bcd_c->mean_above_baseline);
+    fprintf(to, "SN\tG.percent.mean.above.baseline:\t%f\n", stats->bamcheck->bcd_g->mean_above_baseline);
+    fprintf(to, "SN\tT.percent.mean.above.baseline:\t%f\n", stats->bamcheck->bcd_t->mean_above_baseline);
+
+    fprintf(to, "SN\tA.percent.mean.below.baseline:\t%f\n", stats->bamcheck->bcd_a->mean_below_baseline);
+    fprintf(to, "SN\tC.percent.mean.below.baseline:\t%f\n", stats->bamcheck->bcd_c->mean_below_baseline);
+    fprintf(to, "SN\tG.percent.mean.below.baseline:\t%f\n", stats->bamcheck->bcd_g->mean_below_baseline);
+    fprintf(to, "SN\tT.percent.mean.below.baseline:\t%f\n", stats->bamcheck->bcd_t->mean_below_baseline);
+
+    fprintf(to, "SN\tA.percent.max.above.baseline:\t%f\n", stats->bamcheck->bcd_a->max_above_baseline);
+    fprintf(to, "SN\tC.percent.max.above.baseline:\t%f\n", stats->bamcheck->bcd_c->max_above_baseline);
+    fprintf(to, "SN\tG.percent.max.above.baseline:\t%f\n", stats->bamcheck->bcd_g->max_above_baseline);
+    fprintf(to, "SN\tT.percent.max.above.baseline:\t%f\n", stats->bamcheck->bcd_t->max_above_baseline);
+
+    fprintf(to, "SN\tA.percent.max.below.baseline:\t%f\n", stats->bamcheck->bcd_a->max_below_baseline);
+    fprintf(to, "SN\tC.percent.max.below.baseline:\t%f\n", stats->bamcheck->bcd_c->max_below_baseline);
+    fprintf(to, "SN\tG.percent.max.below.baseline:\t%f\n", stats->bamcheck->bcd_g->max_below_baseline);
+    fprintf(to, "SN\tT.percent.max.below.baseline:\t%f\n", stats->bamcheck->bcd_t->max_below_baseline);
+
+    fprintf(to, "SN\tA.percent.max.baseline.deviation:\t%f\n", stats->bamcheck->bcd_a->max_baseline_deviation);
+    fprintf(to, "SN\tC.percent.max.baseline.deviation:\t%f\n", stats->bamcheck->bcd_c->max_baseline_deviation);
+    fprintf(to, "SN\tG.percent.max.baseline.deviation:\t%f\n", stats->bamcheck->bcd_g->max_baseline_deviation);
+    fprintf(to, "SN\tT.percent.max.baseline.deviation:\t%f\n", stats->bamcheck->bcd_t->max_baseline_deviation);
+
+    fprintf(to, "SN\tA.percent.total.mean.baseline.deviation:\t%f\n", stats->bamcheck->bcd_a->total_mean_deviation);
+    fprintf(to, "SN\tC.percent.total.mean.baseline.deviation:\t%f\n", stats->bamcheck->bcd_c->total_mean_deviation);
+    fprintf(to, "SN\tG.percent.total.mean.baseline.deviation:\t%f\n", stats->bamcheck->bcd_g->total_mean_deviation);
+    fprintf(to, "SN\tT.percent.total.mean.baseline.deviation:\t%f\n", stats->bamcheck->bcd_t->total_mean_deviation);
+
     int ibase,iqual;
     if ( stats->max_len<stats->nbases ) stats->max_len++;
     if ( stats->max_qual+1<stats->nquals ) stats->max_qual++;
@@ -1441,6 +1506,12 @@ void cleanup_stats(stats_t* stats)
     destroy_regions(stats);
     if ( stats->rg_hash ) khash_str2int_destroy(stats->rg_hash);
     free(stats->split_name);
+
+    free(stats->bamcheck->bcd_a);
+    free(stats->bamcheck->bcd_c);
+    free(stats->bamcheck->bcd_g);
+    free(stats->bamcheck->bcd_t);
+    free(stats->bamcheck);
     free(stats);
 }
 
@@ -1649,12 +1720,10 @@ typedef struct {
     uint64_t total_count;
 } bamcheck_cycles_t;
 
-static bamcheck_cycles_t* bamcheck_cycles(uint64_t *cycles_arr, int n, int k){
-
-    bamcheck_cycles_t *result = calloc(1, sizeof(bamcheck_cycles_t));
-
+//TODO Super function to also return mean and median (seeing as they are trivial)
+static uint64_t* runmed(uint64_t *cycles_arr, int n, int k){
     uint64_t *count;
-    uint64_t baseline[n];
+    uint64_t *baseline = calloc(n, sizeof(uint64_t));
 
     size_t i;
     for(i = 0; i < n; i++){
@@ -1714,31 +1783,133 @@ static bamcheck_cycles_t* bamcheck_cycles(uint64_t *cycles_arr, int n, int k){
     memcpy(baseline, &smooth_start[0], sizeof(uint64_t) * (k/2));
     memcpy(&baseline[n-(k/2)], &smooth_end[0], sizeof(uint64_t) * (k/2));
 
-    // Calculate baseline and counts above/below
-    int64_t count_minus_baseline[n];
-    uint64_t count_above_baseline = 0;
-    uint64_t count_below_baseline = 0;
-    uint64_t count_total = 0;
-    for(i = 0; i < n; i++){
-        count_total += count[i];
-        count_minus_baseline[i] = count[i] - baseline[i];
-        if (count_minus_baseline[i] > 0){
-            count_above_baseline += count_minus_baseline[i];
+    free(count);
+    return baseline;
+}
+
+static bamcheck_baseline_delta* init_bamcheck_baseline_delta(int n){
+    bamcheck_baseline_delta *delta = calloc(1, sizeof(bamcheck_baseline_delta));
+
+    delta->delta = calloc(n, sizeof(double));
+    delta->n = n;
+
+    delta->above_total = 0;
+    delta->below_total = 0;
+
+    delta->above_n = 0;
+    delta->below_n = 0;
+
+    delta->above_min = 0;
+    delta->below_min = 0;
+
+    delta->above_max = 0;
+    delta->below_max = 0;
+
+    delta->total_count = 0;
+
+    delta->max_baseline_deviation = 0;
+    delta->total_mean_deviation = 0;
+    return delta;
+}
+
+static bamcheck_baseline_delta* bamcheck_baseline_d(uint64_t *baseline, uint64_t *count, int baseline_n, int count_n, double scalar_baseline){
+
+    /*
+    int scalar_baseline = 0;
+    if ( baseline_n != count_n ){
+        // If baseline_n and count_n are not the same dimension,
+        // and baseline_n is not a scalar (ie. a mean or median)
+        // then we can't know what to do with the baseline.
+        if ( baseline_n != 1 ){
+            //TODO Throw a proper samtools error
+            exit(1);
         }
-        else if (count_minus_baseline[i] < 0){
-            count_below_baseline += count_minus_baseline[i]*-1;
+        else{
+            scalar_baseline = 1;
+        }
+    }
+    */
+
+    bamcheck_baseline_delta *result;
+    result = init_bamcheck_baseline_delta(count_n);
+
+    int i;
+    double curr_delta, above_min, above_max, below_min, below_max;
+    above_min = above_max = below_min = below_max = -1;
+
+    for(i = 0; i < count_n; i++){
+        if ( baseline_n == 0 ){
+            curr_delta = (double)count[i] - scalar_baseline;
+        }
+        else{
+            curr_delta = (double)count[i] - baseline[i];
+        }
+        result->delta[i] = curr_delta;
+        result->total_count += count[i];
+
+        if (curr_delta > 0){
+            result->above_n++;
+            result->above_total += curr_delta;
+
+            if( above_min == -1 ) above_min = curr_delta;
+            else {
+                if ( curr_delta < above_min ) above_min = curr_delta;
+            }
+
+            if( above_max == -1 ) above_max = curr_delta;
+            else {
+                if ( curr_delta > above_max ) above_max = curr_delta;
+            }
+        }
+        else if (curr_delta < 0){
+            curr_delta = curr_delta*-1;
+            result->below_n++;
+            result->below_total += curr_delta;
+
+            if( below_min == -1 ) below_min = curr_delta;
+            else {
+                if ( curr_delta < below_min ) below_min = curr_delta;
+            }
+
+            if( below_max == -1 ) below_max = curr_delta;
+            else {
+                if ( curr_delta > below_max ) below_max = curr_delta;
+            }
         }
     }
 
-    result->pct_above_baseline = (double)count_above_baseline / (double)count_total * 100;
-    result->pct_below_baseline = (double)count_below_baseline / (double)count_total * 100;
-    result->total_count = count_total;
+    result->below_min = below_min;
+    result->below_max = below_max;
 
-    free(count);
+    result->above_min = above_min;
+    result->above_max = above_max;
 
     return result;
 }
 
+static bamcheck_cycles_t* bamcheck_cycles(uint64_t *cycles_arr, int n, int k){
+    bamcheck_cycles_t *result = calloc(1, sizeof(bamcheck_cycles_t));
+
+    uint64_t *count;
+    count = copy_arr(cycles_arr, n, n, 0);
+    uint64_t *baseline;
+    baseline = runmed(cycles_arr, n, k);
+
+    // Calculate baseline and counts above/below
+    bamcheck_baseline_delta* deviation;
+    deviation = bamcheck_baseline_d(baseline, count, n, n, 0);
+
+    result->pct_above_baseline = (double)deviation->above_total / (double)deviation->total_count * 100;
+    result->pct_below_baseline = (double)deviation->below_total / (double)deviation->total_count * 100;
+    result->total_count = deviation->total_count;
+
+    free(deviation->delta);
+    free(deviation);
+    free(count);
+    free(baseline);
+
+    return result;
+}
 
 static void bamcheck_indel_peaks(stats_t *curr_stats){
 
@@ -1751,33 +1922,96 @@ static void bamcheck_indel_peaks(stats_t *curr_stats){
         }
     }
 
-    bamcheck_cycles_t *result;
-    result = bamcheck_cycles(curr_stats->ins_cycles_1st, ic_lines, k);
-    curr_stats->bamcheck->fwd_ins_above_baseline_pct = result->pct_above_baseline;
-    curr_stats->bamcheck->fwd_ins_below_baseline_pct = result->pct_below_baseline;
-    free(result);
+    if (ic_lines > 0){
+        bamcheck_cycles_t *result;
+        result = bamcheck_cycles(curr_stats->ins_cycles_1st, ic_lines, k);
+        curr_stats->bamcheck->fwd_ins_above_baseline_pct = result->pct_above_baseline;
+        curr_stats->bamcheck->fwd_ins_below_baseline_pct = result->pct_below_baseline;
+        free(result);
 
-    result = bamcheck_cycles(curr_stats->ins_cycles_2nd, ic_lines, k);
-    curr_stats->bamcheck->rev_ins_above_baseline_pct = result->pct_above_baseline;
-    curr_stats->bamcheck->rev_ins_below_baseline_pct = result->pct_below_baseline;
-    free(result);
+        result = bamcheck_cycles(curr_stats->ins_cycles_2nd, ic_lines, k);
+        curr_stats->bamcheck->rev_ins_above_baseline_pct = result->pct_above_baseline;
+        curr_stats->bamcheck->rev_ins_below_baseline_pct = result->pct_below_baseline;
+        free(result);
 
-    result = bamcheck_cycles(curr_stats->del_cycles_1st, ic_lines, k);
-    curr_stats->bamcheck->fwd_del_above_baseline_pct = result->pct_above_baseline;
-    curr_stats->bamcheck->fwd_del_below_baseline_pct = result->pct_below_baseline;
-    free(result);
+        result = bamcheck_cycles(curr_stats->del_cycles_1st, ic_lines, k);
+        curr_stats->bamcheck->fwd_del_above_baseline_pct = result->pct_above_baseline;
+        curr_stats->bamcheck->fwd_del_below_baseline_pct = result->pct_below_baseline;
+        free(result);
 
-    result = bamcheck_cycles(curr_stats->del_cycles_2nd, ic_lines, k);
-    curr_stats->bamcheck->rev_del_above_baseline_pct = result->pct_above_baseline;
-    curr_stats->bamcheck->rev_del_below_baseline_pct = result->pct_below_baseline;
-    free(result);
+        result = bamcheck_cycles(curr_stats->del_cycles_2nd, ic_lines, k);
+        curr_stats->bamcheck->rev_del_above_baseline_pct = result->pct_above_baseline;
+        curr_stats->bamcheck->rev_del_below_baseline_pct = result->pct_below_baseline;
+        free(result);
+    }
 
+}
+
+static bamcheck_bcd_t* bamcheck_base_content_baseline(uint64_t *base_prop, int n) {
+    bamcheck_bcd_t *result = calloc(1, sizeof(bamcheck_bcd_t));
+
+    bamcheck_baseline_delta* deviation;
+
+    double mean = 0.0;
+    int64_t i;
+    double total = 0;
+    for( i = 0; i < n; i++ ) {
+        total += base_prop[i];
+    }
+    mean = total / (double)n;
+    deviation = bamcheck_baseline_d(NULL, base_prop, 0, n, mean);
+
+    result->mean_above_baseline = deviation->above_total / deviation->n;
+    result->mean_below_baseline = deviation->below_total / deviation->n;
+    result->max_above_baseline = deviation->above_max;
+    result->max_below_baseline = deviation->below_max;
+
+    result->total_mean_deviation = result->mean_above_baseline + result->mean_below_baseline;
+
+    if ( result->max_above_baseline > result->max_below_baseline ) {
+        result->max_baseline_deviation = result->max_above_baseline;
+    }
+    else {
+        result->max_baseline_deviation = result->max_below_baseline;
+    }
+
+    free(deviation->delta);
+    free(deviation);
+    return result;
+}
+
+static void bamcheck_base_content_deviation(stats_t *curr_stats){
+
+    uint64_t gcc_a[curr_stats->max_len];
+    uint64_t gcc_c[curr_stats->max_len];
+    uint64_t gcc_g[curr_stats->max_len];
+    uint64_t gcc_t[curr_stats->max_len];
+    //uint64_t gcc_n[curr_stats->max_len];
+    //uint64_t gcc_o[curr_stats->max_len];
+
+    int ibase;
+    for (ibase=0; ibase<curr_stats->max_len; ibase++) {
+        acgtno_count_t *acgtno_count = &(curr_stats->acgtno_cycles[ibase]);
+        uint64_t acgt_sum = acgtno_count->a + acgtno_count->c + acgtno_count->g + acgtno_count->t;
+
+        gcc_a[ibase] = 100.*acgtno_count->a/acgt_sum;
+        gcc_c[ibase] = 100.*acgtno_count->c/acgt_sum;
+        gcc_g[ibase] = 100.*acgtno_count->g/acgt_sum;
+        gcc_t[ibase] = 100.*acgtno_count->t/acgt_sum;
+        //gcc_n[ibase] = 100.*acgtno_count->n/acgt_sum;
+        //gcc_o[ibase] = 100.*acgtno_count->other/acgt_sum;
+    }
+
+    curr_stats->bamcheck->bcd_a = bamcheck_base_content_baseline(gcc_a, curr_stats->max_len);
+    curr_stats->bamcheck->bcd_c = bamcheck_base_content_baseline(gcc_c, curr_stats->max_len);
+    curr_stats->bamcheck->bcd_g = bamcheck_base_content_baseline(gcc_g, curr_stats->max_len);
+    curr_stats->bamcheck->bcd_t = bamcheck_base_content_baseline(gcc_t, curr_stats->max_len);
 }
 
 static void calculate_bamcheck(stats_t *curr_stats){
     bamcheck_indel_peaks(curr_stats);
+    bamcheck_base_content_deviation(curr_stats);
 }
-
 
 static stats_t* get_curr_split_stats(bam1_t* bam_line, khash_t(c2stats)* split_hash, stats_info_t* info, char* targets)
 {
