@@ -1739,7 +1739,8 @@ static bamcheck_cycles_t* bamcheck_cycles(uint64_t *cycles_arr, int n, int k){
     return result;
 }
 
-static void calculate_bamcheck(stats_t *curr_stats){
+
+static void bamcheck_indel_peaks(stats_t *curr_stats){
 
     int k = 25;
     int ilen;
@@ -1772,6 +1773,11 @@ static void calculate_bamcheck(stats_t *curr_stats){
     free(result);
 
 }
+
+static void calculate_bamcheck(stats_t *curr_stats){
+    bamcheck_indel_peaks(curr_stats);
+}
+
 
 static stats_t* get_curr_split_stats(bam1_t* bam_line, khash_t(c2stats)* split_hash, stats_info_t* info, char* targets)
 {
