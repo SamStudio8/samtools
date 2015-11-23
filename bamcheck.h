@@ -44,5 +44,6 @@ uint64_t* runmed(uint64_t *cycles_arr, int n, int k);
 void bamcheck_quality_dropoff(stats_t *curr_stats);
 void bamcheck_base_content_deviation(stats_t *curr_stats);
 void bamcheck_indel_peaks(stats_t *curr_stats);
+double percentile(double *values, uint64_t n, int tile);
 
 #endif

@@ -928,7 +928,7 @@ void output_stats(FILE *to, stats_t *stats, int sparse)
     fprintf(to, "SN\tpairs with other orientation:\t%ld\n", (long)nisize_other);
     fprintf(to, "SN\tpairs on different chromosomes:\t%ld\n", (long)stats->nreads_anomalous/2);
 
-    //TODO(samstudio8): Currently assumes a user will always run bamcheckR style stats
+    //TODO(samstudio8): Currently assumes a user will always want bamcheckR style stats
     fprintf(to, "SN\tfwd.percent.insertions.above.baseline:\t%f\n", stats->bamcheck->fwd_ins_above_baseline_pct);
     fprintf(to, "SN\tfwd.percent.insertions.below.baseline:\t%f\n", stats->bamcheck->fwd_ins_below_baseline_pct);
 

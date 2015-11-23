@@ -22,13 +22,15 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.  */
 
+//TODO(samstudio8) Should probably read doubles over uint64_t
+
 #include "bamcheck.h"
 
 #include <stdint.h>
 #include <stdio.h>
+#include <math.h>
 
-int cmpfunc (const void * a, const void * b)
-{
+int cmpfunc (const void * a, const void * b){
        return ( *(uint64_t*)a - *(uint64_t*)b );
 }
 
@@ -68,6 +70,7 @@ int64_t med_triplet(int64_t a, int64_t b, int64_t c){
 }
 
 //TODO Super function to also return mean and median (seeing as they are trivial)
+//TODO(samstudio8) Implement a skip list? Speed doesn't seem too poor.
 uint64_t* runmed(uint64_t *cycles_arr, int n, int k){
     uint64_t *count;
     uint64_t *baseline = calloc(n, sizeof(uint64_t));
@@ -103,8 +106,6 @@ uint64_t* runmed(uint64_t *cycles_arr, int n, int k){
     // Smooth 1st and n-1th element
     smooth_start[1] = med_triplet(baseline[0], baseline[1], baseline[2]);
     smooth_end[(k/2)-2] = med_triplet(baseline[n-1], baseline[n-2], baseline[n-3]);
-
-    // Smooth remaining elements to k/2
 
     // Smooth values for first and last k/2 elements (where the windows were too
     //  large to medianize initially). Work inwards starting with element pair (2, n-2).
@@ -333,8 +334,6 @@ void bamcheck_base_content_deviation(stats_t *curr_stats){
     uint64_t gcc_c[curr_stats->max_len];
     uint64_t gcc_g[curr_stats->max_len];
     uint64_t gcc_t[curr_stats->max_len];
-    //uint64_t gcc_n[curr_stats->max_len];
-    //uint64_t gcc_o[curr_stats->max_len];
 
     int ibase;
     for (ibase=0; ibase<curr_stats->max_len; ibase++) {
@@ -345,8 +344,6 @@ void bamcheck_base_content_deviation(stats_t *curr_stats){
         gcc_c[ibase] = 100.*acgtno_count->c/acgt_sum;
         gcc_g[ibase] = 100.*acgtno_count->g/acgt_sum;
         gcc_t[ibase] = 100.*acgtno_count->t/acgt_sum;
-        //gcc_n[ibase] = 100.*acgtno_count->n/acgt_sum;
-        //gcc_o[ibase] = 100.*acgtno_count->other/acgt_sum;
     }
 
     curr_stats->bamcheck->bcd_a = bamcheck_base_content_baseline(gcc_a, curr_stats->max_len);
@@ -380,6 +377,183 @@ bamcheck_stats_t* bamcheck_stats_init()
     return bamcheck;
 }
 
+typedef struct {
+    double q1;
+    double median;
+    double q3;
+    double mean;
+    double iqr;
+    struct summary_stat_t *next;
+} summary_stat_t;
+
+typedef struct {
+    uint64_t fwd_iqr_inc_contig_length;
+    uint64_t fwd_iqr_inc_contig_start;
+    uint64_t fwd_iqr_dec_contig_start;
+    uint64_t fwd_iqr_dec_contig_length;
+
+    uint64_t rev_iqr_inc_contig_length;
+    uint64_t rev_iqr_inc_contig_start;
+} bamcheck_quality_dropoff_t ;
+
 void bamcheck_quality_dropoff(stats_t *curr_stats){
+
+    bamcheck_quality_dropoff_t *result = calloc(1, sizeof(bamcheck_quality_dropoff_t));
+
+    summary_stat_t *cycle_summary;
+    cycle_summary = NULL;
+
+    double cycle_quality[curr_stats->max_qual];
+    int64_t ibase;
+    int iqual;
+    // FORWARDS
+    // Fragments by cycle...
+    for (ibase = 0; ibase < curr_stats->max_len; ibase++) {
+        // ...cycle fragments by quality
+        double sum;
+        for (iqual = 0; iqual <= curr_stats->max_qual; iqual++) {
+            cycle_quality[iqual] = (double)curr_stats->quals_1st[ ibase*curr_stats->nquals + iqual];
+            sum += cycle_quality[iqual];
+        }
+        qsort(cycle_quality, curr_stats->max_qual, sizeof(double), cmpfunc);
+
+        summary_stat_t *new_summary = calloc(1, sizeof(summary_stat_t));
+        new_summary->q1 = percentile(cycle_quality, curr_stats->max_qual, 25);
+        new_summary->median = percentile(cycle_quality, curr_stats->max_qual, 50);
+        new_summary->q3 = percentile(cycle_quality, curr_stats->max_qual, 75);
+        new_summary->iqr = new_summary->q3 - new_summary->q1;
+        new_summary->mean = sum / (double)curr_stats->max_qual;
+        new_summary->next = NULL;
+
+        if (cycle_summary == NULL) {
+            cycle_summary = new_summary;
+        }
+        else {
+            summary_stat_t *curr_summary = cycle_summary;
+            while(curr_summary->next != NULL){
+                curr_summary = curr_summary->next;
+            }
+            curr_summary->next = new_summary;
+        }
+    }
+
+    int cycle = 0;
+    int drop = 3;
+    double cycle_means[curr_stats->max_len - 2*drop];
+    double cycle_medians[curr_stats->max_len - 2*drop];
+    double cycle_iqrs[curr_stats->max_len - 2*drop];
+    summary_stat_t *curr_summary = cycle_summary;
+    while(curr_summary->next != NULL){
+        if (!(cycle < drop || cycle > curr_stats->max_len - drop)){
+            cycle_means[cycle] = curr_summary->mean;
+            cycle_medians[cycle] = curr_summary->median;
+            cycle_iqrs[cycle] = curr_summary->iqr;
+            // Does this miss the last summary?
+        }
+        cycle++;
+        curr_summary = curr_summary->next;
+    }
+
+    int k = 25;
+    int iqr_cutoff = 12;
+    double *mean_baseline;
+    double *median_baseline;
+    mean_baseline = runmed(cycle_means, curr_stats->max_len, k);
+    median_baseline = runmed(cycle_medians, curr_stats->max_len, k);
+
+    int i;
+    int inc_best_start, inc_best_length;
+    int inc_curr_start, inc_curr_length;
+    inc_best_start = inc_best_length = inc_curr_start = inc_curr_length = -1;
+
+    int dec_best_start, dec_best_length;
+    int dec_curr_start, dec_curr_length;
+    dec_best_start = dec_best_length = dec_curr_start = dec_curr_length = -1;
+
+    for (i = 0; i < (curr_stats->max_len - 2*drop); i++) {
+        if (cycle_iqrs[i] >= iqr_cutoff) {
+            if (inc_curr_start < 0){
+                inc_curr_start = i;
+                inc_curr_length = 1;
+            }
+            else {
+                inc_curr_length++;
+            }
+        }
+        else {
+            if (inc_curr_length > inc_best_length){
+                inc_best_start = inc_curr_start;
+                inc_best_length = inc_curr_length;
+            }
+            inc_curr_length = -1;
+            inc_curr_start = -1;
+        }
+
+        if (i > 0) {
+            //printf("%d\t%.2f\t\t%d,%d\n", i-1, cycle_iqrs[i-1], dec_curr_start, dec_curr_length);
+            if(cycle_iqrs[i] < cycle_iqrs[i-1]){
+                if(dec_curr_start < 0){
+                    dec_curr_start = i-1;
+                    dec_curr_length = 1;
+                }
+                else{
+                    dec_curr_length++;
+                }
+            }
+            else{
+                if (dec_curr_length > dec_best_length){
+                    dec_best_length = dec_curr_length;
+                    dec_best_start = dec_curr_start;
+                }
+                dec_curr_length = -1;
+                dec_curr_start = -1;
+            }
+        }
+    }
+
+    if (inc_curr_length > inc_best_length) {
+        //Contiguous cycle may have continued to final cycle
+        inc_best_start = inc_curr_start;
+        inc_best_length = inc_curr_length;
+    }
+    if (dec_curr_length > dec_best_length) {
+        //Contiguous cycle may have continued to final cycle
+        dec_best_start = dec_curr_start;
+        dec_best_length = dec_curr_length;
+    }
+
+    //printf("\n\n%d, %d\n\n", inc_best_start, inc_best_length);
+    //printf("\n\n%d, %d\n\n", dec_best_start, dec_best_length);
+    result->fwd_iqr_inc_contig_start = inc_best_start;
+    result->fwd_iqr_inc_contig_length = inc_best_length;
+    result->fwd_iqr_dec_contig_start = dec_best_start;
+    result->fwd_iqr_dec_contig_length = dec_best_length;
+
+
+    free(mean_baseline);
+    free(median_baseline);
+
+    summary_stat_t *last_summary;
+    curr_summary = cycle_summary;
+    while(curr_summary->next != NULL){
+        last_summary = curr_summary;
+        curr_summary = curr_summary->next;
+        free(last_summary);
+    }
+    free(curr_summary);
+
+
+}
+
+double percentile(double *values, uint64_t n, int tile){
+    //TODO(samstudio8) Potential optimisation by using partial sorting
+    float k_index = (tile/(float)100) * n;
+    if ( ceil(k_index) != k_index ) {
+        k_index = ceil(k_index);
+        return values[(int)k_index-1];
+    }
+    else {
+        return ( (values[(int)k_index-1] + values[(int)k_index]) / (float) 2 );
+    }
 }
 
