@@ -355,7 +355,7 @@ void bamcheck_base_content_deviation(stats_t *curr_stats){
 void calculate_bamcheck(stats_t *curr_stats){
     bamcheck_indel_peaks(curr_stats);
     bamcheck_base_content_deviation(curr_stats);
-    bamcheck_quality_dropoff(curr_stats);
+    bamcheck_quality_dropoff_wrapper(curr_stats);
 }
 
 bamcheck_stats_t* bamcheck_stats_init()
@@ -387,111 +387,91 @@ typedef struct {
 } summary_stat_t;
 
 typedef struct {
-    uint64_t fwd_iqr_inc_contig_length;
-    uint64_t fwd_iqr_inc_contig_start;
-    uint64_t fwd_iqr_dec_contig_start;
-    uint64_t fwd_iqr_dec_contig_length;
+    uint64_t start_longest_trend_pos;
+    uint64_t start_longest_trend_neg;
+    uint64_t start_longest_trend_above_thres;
+    uint64_t start_longest_trend_below_thres;
 
-    uint64_t rev_iqr_inc_contig_length;
-    uint64_t rev_iqr_inc_contig_start;
-} bamcheck_quality_dropoff_t ;
+    uint64_t length_longest_trend_pos;
+    uint64_t length_longest_trend_neg;
+    uint64_t length_longest_trend_above_thres;
+    uint64_t length_longest_trend_below_thres;
+} bamcheck_cycles_trends_t;
 
-void bamcheck_quality_dropoff(stats_t *curr_stats){
+bamcheck_cycles_trends_t* cycle_trends(double *cycles, uint64_t n, double cutoff){
+    bamcheck_cycles_trends_t *result = calloc(1, sizeof(bamcheck_cycles_trends_t));
 
-    bamcheck_quality_dropoff_t *result = calloc(1, sizeof(bamcheck_quality_dropoff_t));
+    uint64_t i;
 
-    summary_stat_t *cycle_summary;
-    cycle_summary = NULL;
-
-    double cycle_quality[curr_stats->max_qual];
-    int64_t ibase;
-    int iqual;
-    // FORWARDS
-    // Fragments by cycle...
-    for (ibase = 0; ibase < curr_stats->max_len; ibase++) {
-        // ...cycle fragments by quality
-        double sum;
-        for (iqual = 0; iqual <= curr_stats->max_qual; iqual++) {
-            cycle_quality[iqual] = (double)curr_stats->quals_1st[ ibase*curr_stats->nquals + iqual];
-            sum += cycle_quality[iqual];
-        }
-        qsort(cycle_quality, curr_stats->max_qual, sizeof(double), cmpfunc);
-
-        summary_stat_t *new_summary = calloc(1, sizeof(summary_stat_t));
-        new_summary->q1 = percentile(cycle_quality, curr_stats->max_qual, 25);
-        new_summary->median = percentile(cycle_quality, curr_stats->max_qual, 50);
-        new_summary->q3 = percentile(cycle_quality, curr_stats->max_qual, 75);
-        new_summary->iqr = new_summary->q3 - new_summary->q1;
-        new_summary->mean = sum / (double)curr_stats->max_qual;
-        new_summary->next = NULL;
-
-        if (cycle_summary == NULL) {
-            cycle_summary = new_summary;
-        }
-        else {
-            summary_stat_t *curr_summary = cycle_summary;
-            while(curr_summary->next != NULL){
-                curr_summary = curr_summary->next;
-            }
-            curr_summary->next = new_summary;
-        }
-    }
-
-    int cycle = 0;
-    int drop = 3;
-    double cycle_means[curr_stats->max_len - 2*drop];
-    double cycle_medians[curr_stats->max_len - 2*drop];
-    double cycle_iqrs[curr_stats->max_len - 2*drop];
-    summary_stat_t *curr_summary = cycle_summary;
-    while(curr_summary->next != NULL){
-        if (!(cycle < drop || cycle > curr_stats->max_len - drop)){
-            cycle_means[cycle] = curr_summary->mean;
-            cycle_medians[cycle] = curr_summary->median;
-            cycle_iqrs[cycle] = curr_summary->iqr;
-            // Does this miss the last summary?
-        }
-        cycle++;
-        curr_summary = curr_summary->next;
-    }
-
-    int k = 25;
-    int iqr_cutoff = 12;
-    double *mean_baseline;
-    double *median_baseline;
-    mean_baseline = runmed(cycle_means, curr_stats->max_len, k);
-    median_baseline = runmed(cycle_medians, curr_stats->max_len, k);
-
-    int i;
-    int inc_best_start, inc_best_length;
-    int inc_curr_start, inc_curr_length;
+    int64_t inc_best_start, inc_best_length, inc_curr_start, inc_curr_length;
     inc_best_start = inc_best_length = inc_curr_start = inc_curr_length = -1;
 
-    int dec_best_start, dec_best_length;
-    int dec_curr_start, dec_curr_length;
+    int64_t abv_best_start, abv_best_length, abv_curr_start, abv_curr_length;
+    abv_best_start = abv_best_length = abv_curr_start = abv_curr_length = -1;
+
+    int64_t blw_best_start, blw_best_length, blw_curr_start, blw_curr_length;
+    blw_best_start = blw_best_length = blw_curr_start = blw_curr_length = -1;
+
+    int64_t dec_best_start, dec_best_length, dec_curr_start, dec_curr_length;
     dec_best_start = dec_best_length = dec_curr_start = dec_curr_length = -1;
 
-    for (i = 0; i < (curr_stats->max_len - 2*drop); i++) {
-        if (cycle_iqrs[i] >= iqr_cutoff) {
-            if (inc_curr_start < 0){
-                inc_curr_start = i;
-                inc_curr_length = 1;
+    for (i = 0; i < n; i++) {
+        if (cycles[i] >= cutoff) {
+            if (abv_curr_start < 0){
+                abv_curr_start = i;
+                abv_curr_length = 1;
             }
             else {
-                inc_curr_length++;
+                abv_curr_length++;
             }
         }
         else {
-            if (inc_curr_length > inc_best_length){
-                inc_best_start = inc_curr_start;
-                inc_best_length = inc_curr_length;
+            if (abv_curr_length > abv_best_length){
+                abv_best_start = abv_curr_start;
+                abv_best_length = abv_curr_length;
             }
-            inc_curr_length = -1;
-            inc_curr_start = -1;
+            abv_curr_length = -1;
+            abv_curr_start = -1;
+        }
+        if (cycles[i] <= cutoff) {
+            if (blw_curr_start < 0){
+                blw_curr_start = i;
+                blw_curr_length = 1;
+            }
+            else {
+                blw_curr_length++;
+            }
+        }
+        else {
+            if (blw_curr_length > blw_best_length){
+                blw_best_start = blw_curr_start;
+                blw_best_length = blw_curr_length;
+            }
+            blw_curr_length = -1;
+            blw_curr_start = -1;
         }
 
         if (i > 0) {
-            //printf("%d\t%.2f\t\t%d,%d\n", i-1, cycle_iqrs[i-1], dec_curr_start, dec_curr_length);
-            if(cycle_iqrs[i] < cycle_iqrs[i-1]){
+            if(cycles[i] > cycles[i-1]){
+                if(inc_curr_start < 0){
+                    inc_curr_start = i-1;
+                    inc_curr_length = 1;
+                }
+                else{
+                    inc_curr_length++;
+                }
+            }
+            else{
+                if (inc_curr_length > inc_best_length){
+                    inc_best_length = inc_curr_length;
+                    inc_best_start = inc_curr_start;
+                }
+                inc_curr_length = -1;
+                inc_curr_start = -1;
+            }
+
+            //printf("%d\t%.2f\t\t%d,%d\n", i-1, cycles[i-1], dec_curr_start, dec_curr_length);
+            if(cycles[i] < cycles[i-1]){
                 if(dec_curr_start < 0){
                     dec_curr_start = i-1;
                     dec_curr_length = 1;
@@ -511,24 +491,161 @@ void bamcheck_quality_dropoff(stats_t *curr_stats){
         }
     }
 
+    //Contiguous cycle may have continued to final cycle
+    if (abv_curr_length > abv_best_length) {
+        abv_best_start = abv_curr_start;
+        abv_best_length = abv_curr_length;
+    }
     if (inc_curr_length > inc_best_length) {
-        //Contiguous cycle may have continued to final cycle
         inc_best_start = inc_curr_start;
         inc_best_length = inc_curr_length;
     }
+    if (blw_curr_length > blw_best_length) {
+        blw_best_start = blw_curr_start;
+        blw_best_length = blw_curr_length;
+    }
     if (dec_curr_length > dec_best_length) {
-        //Contiguous cycle may have continued to final cycle
         dec_best_start = dec_curr_start;
         dec_best_length = dec_curr_length;
     }
 
-    //printf("\n\n%d, %d\n\n", inc_best_start, inc_best_length);
-    //printf("\n\n%d, %d\n\n", dec_best_start, dec_best_length);
-    result->fwd_iqr_inc_contig_start = inc_best_start;
-    result->fwd_iqr_inc_contig_length = inc_best_length;
-    result->fwd_iqr_dec_contig_start = dec_best_start;
-    result->fwd_iqr_dec_contig_length = dec_best_length;
+    //TODO Handle situations where best is never found...
+    if (abv_best_length == -1){
+        abv_best_start = 0;
+        abv_best_length = 0;
+    }
+    if (inc_best_length == -1){
+        inc_best_start = 0;
+        inc_best_length = 0;
+    }
+    if (blw_best_length == -1){
+        blw_best_start = 0;
+        blw_best_length = 0;
+    }
+    if (dec_best_length == -1){
+        dec_best_start = 0;
+        dec_best_length = 0;
+    }
 
+    result->start_longest_trend_pos = inc_best_start;
+    result->start_longest_trend_neg = dec_best_start;
+    result->start_longest_trend_above_thres = abv_best_start;
+    result->start_longest_trend_below_thres = blw_best_start;
+
+    result->length_longest_trend_pos = inc_best_length;
+    result->length_longest_trend_neg = dec_best_length;
+    result->length_longest_trend_above_thres = abv_best_length;
+    result->length_longest_trend_below_thres = blw_best_length;
+
+    return result;
+}
+
+void bamcheck_quality_dropoff_wrapper(stats_t *curr_stats){
+
+    //TODO Abstract summarisation of cycles...
+    bamcheck_quality_dropoff_t *result = calloc(1, sizeof(bamcheck_quality_dropoff_t));
+    summary_stat_t *cycle_summary;
+    cycle_summary = NULL;
+
+    double cycle_quality[curr_stats->max_qual];
+    int64_t ibase;
+    int iqual;
+    // FORWARDS
+    // Fragments by cycle...
+    for (ibase = 0; ibase < curr_stats->max_len; ibase++) {
+        // ...cycle fragments by quality
+        double curr;
+        double sum = 0;
+        uint64_t zeros = 0;
+        for (iqual = 0; iqual <= curr_stats->max_qual; iqual++) {
+            curr = (double)curr_stats->quals_1st[ ibase*curr_stats->nquals + iqual];
+            cycle_quality[iqual] = curr;
+            sum += curr;
+            if (curr == 0){
+                zeros++;
+            }
+        }
+        qsort(cycle_quality, curr_stats->max_qual, sizeof(double), cmpfunc);
+
+        double sum_weight = 0;
+        double sum_weighted_qual = 0;
+        double weighted_quals[curr_stats->max_qual - zeros];
+        int j = 0;
+        for(iqual = 0; iqual < curr_stats->max_qual; iqual++){
+            if (cycle_quality[iqual] != 0){
+                sum_weighted_qual += cycle_quality[iqual] * iqual;
+                sum_weight += cycle_quality[iqual];
+
+                weighted_quals[j] = cycle_quality[iqual] * iqual;
+                j++;
+            }
+        }
+
+        summary_stat_t *new_summary = calloc(1, sizeof(summary_stat_t));
+        //new_summary->q1 = percentile(&cycle_quality[zeros], curr_stats->max_qual - zeros, 25);
+        //new_summary->median = percentile(&cycle_quality[zeros], curr_stats->max_qual - zeros, 50);
+        //new_summary->q3 = percentile(&cycle_quality[zeros], curr_stats->max_qual - zeros, 75);
+        new_summary->q1 = percentile(weighted_quals, curr_stats->max_qual - zeros, 25);
+        new_summary->median = percentile(weighted_quals, curr_stats->max_qual - zeros, 50);
+        new_summary->q3 = percentile(weighted_quals, curr_stats->max_qual - zeros, 75);
+        new_summary->iqr = new_summary->q3 - new_summary->q1;
+        //new_summary->mean = sum / (((double)curr_stats->max_qual) - zeros);
+        new_summary->mean = sum_weighted_qual / (double)sum_weight;
+        new_summary->next = NULL;
+
+        if (cycle_summary == NULL) {
+            cycle_summary = new_summary;
+        }
+        else {
+            summary_stat_t *curr_summary = cycle_summary;
+            while(curr_summary->next != NULL){
+                curr_summary = curr_summary->next;
+            }
+            curr_summary->next = new_summary;
+        }
+    }
+
+    //TODO Abstract summarisation of cycle summaries
+    int cycle = 0;
+    int drop = 3;
+    double cycle_means[curr_stats->max_len - 2*drop];
+    double cycle_medians[curr_stats->max_len - 2*drop];
+    double cycle_iqrs[curr_stats->max_len - 2*drop];
+    summary_stat_t *curr_summary = cycle_summary;
+    while(curr_summary->next != NULL){
+        if (!(cycle < drop || cycle > curr_stats->max_len - drop)){
+            cycle_means[cycle] = curr_summary->mean;
+            cycle_medians[cycle] = curr_summary->median;
+            cycle_iqrs[cycle] = curr_summary->iqr;
+            // Does this miss the last summary?
+        }
+        cycle++;
+        curr_summary = curr_summary->next;
+    }
+
+    int k = 25;
+    double iqr_cutoff = 12.0;
+    double *mean_baseline;
+    double *median_baseline;
+
+    mean_baseline = runmed(cycle_means, curr_stats->max_len - (2*drop), k);
+    median_baseline = runmed(cycle_medians, curr_stats->max_len - (2*drop), k);
+
+    bamcheck_cycles_trends_t *trends;
+
+    trends = cycle_trends(cycle_iqrs, curr_stats->max_len - (2 * drop), iqr_cutoff);
+    result->fwd_iqr_inc_contig_start = trends->start_longest_trend_above_thres;
+    result->fwd_iqr_inc_contig_length = trends->length_longest_trend_above_thres;
+    free(trends);
+
+    trends = cycle_trends(mean_baseline, curr_stats->max_len - (2 * drop), 0);
+    result->fwd_runmed_mean_dec_contig_start = trends->start_longest_trend_neg;
+    result->fwd_runmed_mean_dec_contig_length = trends->length_longest_trend_neg;
+    result->fwd_runmed_mean_dec_high = mean_baseline[trends->start_longest_trend_neg];
+    result->fwd_runmed_mean_dec_low = mean_baseline[trends->start_longest_trend_neg + trends->length_longest_trend_neg];
+    free(trends);
+
+    curr_stats->bamcheck->fwd_dropoff = result;
 
     free(mean_baseline);
     free(median_baseline);
@@ -541,8 +658,6 @@ void bamcheck_quality_dropoff(stats_t *curr_stats){
         free(last_summary);
     }
     free(curr_summary);
-
-
 }
 
 double percentile(double *values, uint64_t n, int tile){

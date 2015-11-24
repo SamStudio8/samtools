@@ -971,6 +971,18 @@ void output_stats(FILE *to, stats_t *stats, int sparse)
     fprintf(to, "SN\tG.percent.total.mean.baseline.deviation:\t%f\n", stats->bamcheck->bcd_g->total_mean_deviation);
     fprintf(to, "SN\tT.percent.total.mean.baseline.deviation:\t%f\n", stats->bamcheck->bcd_t->total_mean_deviation);
 
+    fprintf(to, "SN\tquality.dropoff.fwd.high.iqr.start.read.cycle:\t%d\n", stats->bamcheck->fwd_dropoff->fwd_iqr_inc_contig_start);
+    fprintf(to, "SN\tquality.dropoff.fwd.high.iqr.end.read.cycle::\t%d\n", stats->bamcheck->fwd_dropoff->fwd_iqr_inc_contig_start + stats->bamcheck->fwd_dropoff->fwd_iqr_inc_contig_length);
+    fprintf(to, "SN\tquality.dropoff.fwd.high.iqr.max.contiguous.read.cycles:\t%d\n", stats->bamcheck->fwd_dropoff->fwd_iqr_inc_contig_length);
+
+    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.start.read.cycle:\t%d\n", stats->bamcheck->fwd_dropoff->fwd_runmed_mean_dec_contig_start);
+    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.end.read.cycle:\t%d\n", stats->bamcheck->fwd_dropoff->fwd_runmed_mean_dec_contig_start + stats->bamcheck->fwd_dropoff->fwd_runmed_mean_dec_contig_length);
+    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.max.contiguous.read.cycles:\t%d\n", stats->bamcheck->fwd_dropoff->fwd_runmed_mean_dec_contig_length);
+
+    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.high.value:\t%f\n", stats->bamcheck->fwd_dropoff->fwd_runmed_mean_dec_high);
+    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.low.value:\t%f\n", stats->bamcheck->fwd_dropoff->fwd_runmed_mean_dec_low);
+
+
     int ibase,iqual;
     if ( stats->max_len<stats->nbases ) stats->max_len++;
     if ( stats->max_qual+1<stats->nquals ) stats->max_qual++;
@@ -1572,8 +1584,8 @@ int main_stats(int argc, char *argv[])
     stats_t *all_stats = stats_init();
     stats_t *curr_stats = NULL;
     init_stat_structs(all_stats, info, group_id, targets);
-    // Init
-    // .. hash
+
+    // Init hash of IDs to split stats_t pointers
     khash_t(c2stats)* split_hash = kh_init(c2stats);
 
     // Collect statistics

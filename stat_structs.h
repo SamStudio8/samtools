@@ -102,6 +102,18 @@ typedef struct {
 } bamcheck_bcd_t;
 
 typedef struct {
+    uint64_t fwd_iqr_inc_contig_length;
+    uint64_t fwd_iqr_inc_contig_start;
+
+    uint64_t fwd_runmed_mean_dec_contig_length;
+    uint64_t fwd_runmed_mean_dec_contig_start;
+
+    float fwd_runmed_mean_dec_high;
+    float fwd_runmed_mean_dec_low;
+
+} bamcheck_quality_dropoff_t ;
+
+typedef struct {
     double fwd_ins_above_baseline_pct;
     double fwd_ins_below_baseline_pct;
 
@@ -118,6 +130,9 @@ typedef struct {
     bamcheck_bcd_t *bcd_c;
     bamcheck_bcd_t *bcd_g;
     bamcheck_bcd_t *bcd_t;
+
+    bamcheck_quality_dropoff_t *fwd_dropoff;
+    bamcheck_quality_dropoff_t *rev_dropoff;
 
 } bamcheck_stats_t;
 
