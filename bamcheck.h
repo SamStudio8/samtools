@@ -35,9 +35,10 @@ int64_t med_triplet(int64_t a, int64_t b, int64_t c);
 int cmpfunc (const void * a, const void * b);
 uint64_t* copy_arr(uint64_t *source, int n, int new_n, int filter);
 
-bamcheck_bcd_t* bamcheck_base_content_baseline(uint64_t *base_prop, int n);
+bamcheck_bcd_t* bamcheck_base_content_baseline(double *base_prop, int n);
 bamcheck_cycles_t* bamcheck_cycles(uint64_t *cycles_arr, int n, int k);
 bamcheck_baseline_delta* bamcheck_baseline_d(uint64_t *baseline, uint64_t *count, int baseline_n, int count_n, double scalar_baseline);
+bamcheck_baseline_delta* bamcheck_baseline_d_double(double *count, int count_n, double baseline);
 bamcheck_baseline_delta* init_bamcheck_baseline_delta(int n);
 uint64_t* runmed(uint64_t *cycles_arr, int n, int k);
 

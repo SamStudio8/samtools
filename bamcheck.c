@@ -160,23 +160,60 @@ bamcheck_baseline_delta* init_bamcheck_baseline_delta(int n){
     return delta;
 }
 
-bamcheck_baseline_delta* bamcheck_baseline_d(uint64_t *baseline, uint64_t *count, int baseline_n, int count_n, double scalar_baseline){
+bamcheck_baseline_delta* bamcheck_baseline_d_double(double *count, int count_n, double baseline){
 
-    /*
-    int scalar_baseline = 0;
-    if ( baseline_n != count_n ){
-        // If baseline_n and count_n are not the same dimension,
-        // and baseline_n is not a scalar (ie. a mean or median)
-        // then we can't know what to do with the baseline.
-        if ( baseline_n != 1 ){
-            //TODO Throw a proper samtools error
-            exit(1);
+    bamcheck_baseline_delta *result;
+    result = init_bamcheck_baseline_delta(count_n);
+
+    int i;
+    double curr_delta, above_min, above_max, below_min, below_max;
+    above_min = above_max = below_min = below_max = -1;
+
+    for(i = 0; i < count_n; i++){
+        curr_delta = (double)count[i] - baseline;
+        result->delta[i] = curr_delta;
+        result->total_count += count[i];
+
+        if (curr_delta > 0){
+            result->above_n++;
+            result->above_total += curr_delta;
+
+            if( above_min == -1 ) above_min = curr_delta;
+            else {
+                if ( curr_delta < above_min ) above_min = curr_delta;
+            }
+
+            if( above_max == -1 ) above_max = curr_delta;
+            else {
+                if ( curr_delta > above_max ) above_max = curr_delta;
+            }
         }
-        else{
-            scalar_baseline = 1;
+        else if (curr_delta < 0){
+            curr_delta = curr_delta*-1;
+            result->below_n++;
+            result->below_total += curr_delta;
+
+            if( below_min == -1 ) below_min = curr_delta;
+            else {
+                if ( curr_delta < below_min ) below_min = curr_delta;
+            }
+
+            if( below_max == -1 ) below_max = curr_delta;
+            else {
+                if ( curr_delta > below_max ) below_max = curr_delta;
+            }
         }
     }
-    */
+
+    result->below_min = below_min;
+    result->below_max = below_max;
+
+    result->above_min = above_min;
+    result->above_max = above_max;
+
+    return result;
+}
+bamcheck_baseline_delta* bamcheck_baseline_d(uint64_t *baseline, uint64_t *count, int baseline_n, int count_n, double scalar_baseline){
 
     bamcheck_baseline_delta *result;
     result = init_bamcheck_baseline_delta(count_n);
@@ -295,7 +332,7 @@ void bamcheck_indel_peaks(stats_t *curr_stats){
 
 }
 
-bamcheck_bcd_t* bamcheck_base_content_baseline(uint64_t *base_prop, int n) {
+bamcheck_bcd_t* bamcheck_base_content_baseline(double *base_prop, int n) {
     bamcheck_bcd_t *result = calloc(1, sizeof(bamcheck_bcd_t));
 
     bamcheck_baseline_delta* deviation;
@@ -307,7 +344,7 @@ bamcheck_bcd_t* bamcheck_base_content_baseline(uint64_t *base_prop, int n) {
         total += base_prop[i];
     }
     mean = total / (double)n;
-    deviation = bamcheck_baseline_d(NULL, base_prop, 0, n, mean);
+    deviation = bamcheck_baseline_d_double(base_prop, n, mean);
 
     result->mean_above_baseline = deviation->above_total / deviation->n;
     result->mean_below_baseline = deviation->below_total / deviation->n;
@@ -330,13 +367,13 @@ bamcheck_bcd_t* bamcheck_base_content_baseline(uint64_t *base_prop, int n) {
 
 void bamcheck_base_content_deviation(stats_t *curr_stats){
 
-    uint64_t gcc_a[curr_stats->max_len];
-    uint64_t gcc_c[curr_stats->max_len];
-    uint64_t gcc_g[curr_stats->max_len];
-    uint64_t gcc_t[curr_stats->max_len];
+    double gcc_a[curr_stats->max_len];
+    double gcc_c[curr_stats->max_len];
+    double gcc_g[curr_stats->max_len];
+    double gcc_t[curr_stats->max_len];
 
     int ibase;
-    for (ibase=0; ibase<curr_stats->max_len; ibase++) {
+    for (ibase=0; ibase < curr_stats->max_len; ibase++) {
         acgtno_count_t *acgtno_count = &(curr_stats->acgtno_cycles[ibase]);
         uint64_t acgt_sum = acgtno_count->a + acgtno_count->c + acgtno_count->g + acgtno_count->t;
 
