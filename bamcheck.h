@@ -46,5 +46,12 @@ void bamcheck_quality_dropoff(stats_t *curr_stats);
 void bamcheck_base_content_deviation(stats_t *curr_stats);
 void bamcheck_indel_peaks(stats_t *curr_stats);
 double percentile(double *values, uint64_t n, int tile);
+double* copy_arr_double(double *source, int n, int new_n, int filter);
+double* runmed_double(double *cycles_arr, int n, int k);
+uint64_t wtd_percentile(double *cumsums, uint64_t cumsums_n, uint64_t n, int tile);
+int cmpfunc_f (const void * a, const void * b);
+double med_triplet_double(double a, double b, double c);
+void bamcheck_quality_dropoff_wrapper(stats_t *curr_stats);
+bamcheck_quality_dropoff_t* bamcheck_quality_dropoff_executor(uint64_t *cycle_counts, uint64_t cycles_n, uint64_t quals_n, uint64_t max_quals_n);
 
 #endif

@@ -102,14 +102,14 @@ typedef struct {
 } bamcheck_bcd_t;
 
 typedef struct {
-    uint64_t fwd_iqr_inc_contig_length;
-    uint64_t fwd_iqr_inc_contig_start;
+    uint64_t iqr_inc_contig_length;
+    uint64_t iqr_inc_contig_start;
 
-    uint64_t fwd_runmed_mean_dec_contig_length;
-    uint64_t fwd_runmed_mean_dec_contig_start;
+    uint64_t runmed_mean_dec_contig_length;
+    uint64_t runmed_mean_dec_contig_start;
 
-    float fwd_runmed_mean_dec_high;
-    float fwd_runmed_mean_dec_low;
+    float runmed_mean_dec_high;
+    float runmed_mean_dec_low;
 
 } bamcheck_quality_dropoff_t ;
 

@@ -971,16 +971,27 @@ void output_stats(FILE *to, stats_t *stats, int sparse)
     fprintf(to, "SN\tG.percent.total.mean.baseline.deviation:\t%f\n", stats->bamcheck->bcd_g->total_mean_deviation);
     fprintf(to, "SN\tT.percent.total.mean.baseline.deviation:\t%f\n", stats->bamcheck->bcd_t->total_mean_deviation);
 
-    fprintf(to, "SN\tquality.dropoff.fwd.high.iqr.start.read.cycle:\t%d\n", stats->bamcheck->fwd_dropoff->fwd_iqr_inc_contig_start);
-    fprintf(to, "SN\tquality.dropoff.fwd.high.iqr.end.read.cycle::\t%d\n", stats->bamcheck->fwd_dropoff->fwd_iqr_inc_contig_start + stats->bamcheck->fwd_dropoff->fwd_iqr_inc_contig_length);
-    fprintf(to, "SN\tquality.dropoff.fwd.high.iqr.max.contiguous.read.cycles:\t%d\n", stats->bamcheck->fwd_dropoff->fwd_iqr_inc_contig_length);
+    fprintf(to, "SN\tquality.dropoff.fwd.high.iqr.start.read.cycle:\t%d\n", stats->bamcheck->fwd_dropoff->iqr_inc_contig_start);
+    fprintf(to, "SN\tquality.dropoff.fwd.high.iqr.end.read.cycle::\t%d\n", stats->bamcheck->fwd_dropoff->iqr_inc_contig_start + stats->bamcheck->fwd_dropoff->iqr_inc_contig_length);
+    fprintf(to, "SN\tquality.dropoff.fwd.high.iqr.max.contiguous.read.cycles:\t%d\n", stats->bamcheck->fwd_dropoff->iqr_inc_contig_length);
 
-    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.start.read.cycle:\t%d\n", stats->bamcheck->fwd_dropoff->fwd_runmed_mean_dec_contig_start);
-    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.end.read.cycle:\t%d\n", stats->bamcheck->fwd_dropoff->fwd_runmed_mean_dec_contig_start + stats->bamcheck->fwd_dropoff->fwd_runmed_mean_dec_contig_length);
-    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.max.contiguous.read.cycles:\t%d\n", stats->bamcheck->fwd_dropoff->fwd_runmed_mean_dec_contig_length);
+    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.start.read.cycle:\t%d\n", stats->bamcheck->fwd_dropoff->runmed_mean_dec_contig_start);
+    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.end.read.cycle:\t%d\n", stats->bamcheck->fwd_dropoff->runmed_mean_dec_contig_start + stats->bamcheck->fwd_dropoff->runmed_mean_dec_contig_length);
+    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.max.contiguous.read.cycles:\t%d\n", stats->bamcheck->fwd_dropoff->runmed_mean_dec_contig_length);
 
-    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.high.value:\t%f\n", stats->bamcheck->fwd_dropoff->fwd_runmed_mean_dec_high);
-    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.low.value:\t%f\n", stats->bamcheck->fwd_dropoff->fwd_runmed_mean_dec_low);
+    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.high.value:\t%f\n", stats->bamcheck->fwd_dropoff->runmed_mean_dec_high);
+    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.low.value:\t%f\n", stats->bamcheck->fwd_dropoff->runmed_mean_dec_low);
+
+    fprintf(to, "SN\tquality.dropoff.rev.high.iqr.start.read.cycle:\t%d\n", stats->bamcheck->rev_dropoff->iqr_inc_contig_start);
+    fprintf(to, "SN\tquality.dropoff.rev.high.iqr.end.read.cycle::\t%d\n", stats->bamcheck->rev_dropoff->iqr_inc_contig_start + stats->bamcheck->rev_dropoff->iqr_inc_contig_length);
+    fprintf(to, "SN\tquality.dropoff.rev.high.iqr.max.contiguous.read.cycles:\t%d\n", stats->bamcheck->rev_dropoff->iqr_inc_contig_length);
+
+    fprintf(to, "SN\tquality.dropoff.rev.mean.runmed.decline.start.read.cycle:\t%d\n", stats->bamcheck->rev_dropoff->runmed_mean_dec_contig_start);
+    fprintf(to, "SN\tquality.dropoff.rev.mean.runmed.decline.end.read.cycle:\t%d\n", stats->bamcheck->rev_dropoff->runmed_mean_dec_contig_start + stats->bamcheck->rev_dropoff->runmed_mean_dec_contig_length);
+    fprintf(to, "SN\tquality.dropoff.rev.mean.runmed.decline.max.contiguous.read.cycles:\t%d\n", stats->bamcheck->rev_dropoff->runmed_mean_dec_contig_length);
+
+    fprintf(to, "SN\tquality.dropoff.rev.mean.runmed.decline.high.value:\t%f\n", stats->bamcheck->rev_dropoff->runmed_mean_dec_high);
+    fprintf(to, "SN\tquality.dropoff.rev.mean.runmed.decline.low.value:\t%f\n", stats->bamcheck->rev_dropoff->runmed_mean_dec_low);
 
 
     int ibase,iqual;
