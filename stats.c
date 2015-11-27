@@ -981,6 +981,7 @@ void output_stats(FILE *to, stats_t *stats, int sparse)
 
     fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.high.value:\t%f\n", stats->bamcheck->fwd_dropoff->runmed_mean_dec_high);
     fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.low.value:\t%f\n", stats->bamcheck->fwd_dropoff->runmed_mean_dec_low);
+    fprintf(to, "SN\tquality.dropoff.fwd.mean.runmed.decline.range:\t%f\n", stats->bamcheck->fwd_dropoff->runmed_mean_dec_range);
 
     fprintf(to, "SN\tquality.dropoff.rev.high.iqr.start.read.cycle:\t%d\n", stats->bamcheck->rev_dropoff->iqr_inc_contig_start);
     fprintf(to, "SN\tquality.dropoff.rev.high.iqr.end.read.cycle::\t%d\n", stats->bamcheck->rev_dropoff->iqr_inc_contig_start + stats->bamcheck->rev_dropoff->iqr_inc_contig_length);
@@ -992,6 +993,7 @@ void output_stats(FILE *to, stats_t *stats, int sparse)
 
     fprintf(to, "SN\tquality.dropoff.rev.mean.runmed.decline.high.value:\t%f\n", stats->bamcheck->rev_dropoff->runmed_mean_dec_high);
     fprintf(to, "SN\tquality.dropoff.rev.mean.runmed.decline.low.value:\t%f\n", stats->bamcheck->rev_dropoff->runmed_mean_dec_low);
+    fprintf(to, "SN\tquality.dropoff.rev.mean.runmed.decline.range:\t%f\n", stats->bamcheck->rev_dropoff->runmed_mean_dec_range);
 
 
     int ibase,iqual;

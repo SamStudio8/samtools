@@ -811,6 +811,7 @@ bamcheck_quality_dropoff_t* bamcheck_quality_dropoff_executor(uint64_t *cycle_co
     result->runmed_mean_dec_contig_length = trends->length_longest_trend_neg;
     result->runmed_mean_dec_high = mean_baseline[trends->start_longest_trend_neg+drop-1];
     result->runmed_mean_dec_low = mean_baseline[trends->start_longest_trend_neg+(drop-2)+ trends->length_longest_trend_neg];
+    result->runmed_mean_dec_range = result->runmed_mean_dec_high - result->runmed_mean_dec_low;
     free(trends);
 
     free(mean_baseline);

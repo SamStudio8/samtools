@@ -110,6 +110,7 @@ typedef struct {
 
     float runmed_mean_dec_high;
     float runmed_mean_dec_low;
+    float runmed_mean_dec_range;
 
 } bamcheck_quality_dropoff_t ;
 
