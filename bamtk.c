@@ -1,6 +1,6 @@
 /*  bamtk.c -- main samtools command front-end.
 
-    Copyright (C) 2008-2015 Genome Research Ltd.
+    Copyright (C) 2008-2016 Genome Research Ltd.
 
     Author: Heng Li <lh3@sanger.ac.uk>
 
@@ -21,6 +21,8 @@ THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.  */
+
+#include <config.h>
 
 #include <stdio.h>
 #include <unistd.h>
@@ -121,7 +123,7 @@ static void usage(FILE *fp)
 "     addreplacerg   adds or replaces RG tags\n"
 "\n"
 "  -- File operations\n"
-"     bamshuf        shuffle and group alignments by name\n"
+"     collate        shuffle and group alignments by name\n"
 "     cat            concatenate BAMs\n"
 "     merge          merge sorted alignments\n"
 "     mpileup        multi-way pileup\n"
@@ -198,6 +200,7 @@ int main(int argc, char *argv[])
     else if (strcmp(argv[1], "depad") == 0)     ret = main_pad2unpad(argc-1, argv+1);
     else if (strcmp(argv[1], "bedcov") == 0)    ret = main_bedcov(argc-1, argv+1);
     else if (strcmp(argv[1], "bamshuf") == 0)   ret = main_bamshuf(argc-1, argv+1);
+    else if (strcmp(argv[1], "collate") == 0)   ret = main_bamshuf(argc-1, argv+1);
     else if (strcmp(argv[1], "stats") == 0)     ret = main_stats(argc-1, argv+1);
     else if (strcmp(argv[1], "flags") == 0)     ret = main_flags(argc-1, argv+1);
     else if (strcmp(argv[1], "split") == 0)     ret = main_split(argc-1, argv+1);
@@ -207,14 +210,12 @@ int main(int argc, char *argv[])
         fprintf(stderr, "[main] The `pileup' command has been removed. Please use `mpileup' instead.\n");
         return 1;
     }
-#if _CURSES_LIB != 0
     else if (strcmp(argv[1], "tview") == 0)   ret = bam_tview_main(argc-1, argv+1);
-#endif
     else if (strcmp(argv[1], "--version") == 0) {
         printf(
 "samtools %s\n"
 "Using htslib %s\n"
-"Copyright (C) 2015 Genome Research Ltd.\n",
+"Copyright (C) 2016 Genome Research Ltd.\n",
                samtools_version(), hts_version());
     }
     else if (strcmp(argv[1], "--version-only") == 0) {

@@ -45,6 +45,7 @@ test_bam2fq($opts);
 test_depad($opts);
 test_stats($opts);
 test_merge($opts);
+test_sort($opts);
 test_fixmate($opts);
 test_calmd($opts);
 test_idxstat($opts);
@@ -1667,6 +1668,7 @@ sub test_view
          ['-r', 'grp2', '-R', $fogn], 0],
         # Libraries
         ['lib2', { libraries => { 'Library 2' => 1 }}, ['-l', 'Library 2'], 0],
+        ['lib3', { libraries => { 'Library 3' => 1 }}, ['-l', 'Library 3'], 0],
         # Mapping qualities
         ['mq50',  { min_map_qual => 50 },  ['-q', 50], 0],
         ['mq99',  { min_map_qual => 99 },  ['-q', 99], 0],
@@ -2325,6 +2327,18 @@ sub test_merge
     test_cmd($opts,out=>'merge/7.merge.expected.bam',cmd=>"$$opts{bin}/samtools merge -s 1 - $$opts{path}/dat/test_input_1_a_regex.sam $$opts{path}/dat/test_input_1_b_regex.sam");
 }
 
+sub test_sort
+{
+    my ($opts, %args) = @_;
+
+    # TODO Sort test cases
+
+    # Check obsolete invocation is detected
+    test_cmd($opts, out=>"dat/empty.expected", cmd=>"$$opts{bin}/samtools sort $$opts{path}/dat/test_input_1_a.bam $$opts{tmp}/sortout", want_fail=>1);
+    test_cmd($opts, out=>"dat/empty.expected", cmd=>"$$opts{bin}/samtools sort -f $$opts{path}/dat/test_input_1_a.bam $$opts{tmp}/sortout.bam", want_fail=>1);
+    test_cmd($opts, out=>"dat/empty.expected", cmd=>"$$opts{bin}/samtools sort -o $$opts{path}/dat/test_input_1_a.bam $$opts{tmp}/sorttmp", want_fail=>1);
+}
+
 sub test_fixmate
 {
     my ($opts,%args) = @_;
@@ -2364,6 +2378,7 @@ sub test_quickcheck
         'quickcheck/2.quickcheck.badheader.bam',
         'quickcheck/3.quickcheck.ok.bam',
         'quickcheck/4.quickcheck.ok.bam',
+        'quickcheck/5.quickcheck.truncated.cram',
         );
 
     my $all_testfiles;
@@ -2372,10 +2387,12 @@ sub test_quickcheck
         $all_testfiles .= " $$opts{path}/$fn";
         test_cmd($opts, out => 'dat/empty.expected',
             want_fail => ($fn !~ /[.]ok[.]/),
+            expect_fail => ($fn =~ /truncated[.]cram/)? 1 : 0,
             cmd => "$$opts{bin}/samtools quickcheck $$opts{path}/$fn");
     }
 
     test_cmd($opts, out => 'quickcheck/all.expected', want_fail => 1,
+        expect_fail => 1, # due to 5.quickcheck.truncated.cram
         cmd => "$$opts{bin}/samtools quickcheck -v $all_testfiles | sed 's,.*/quickcheck/,,'");
 }
 

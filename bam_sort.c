@@ -24,6 +24,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.  */
 
+#include <config.h>
+
 #include <stdbool.h>
 #include <stdlib.h>
 #include <ctype.h>
@@ -858,8 +860,6 @@ static inline void move_kstr_to_text(char **text, kstring_t *ks) {
 static bam_hdr_t * finish_merged_header(merged_header_t *merged_hdr) {
     size_t     txt_sz;
     char      *text;
-    char     **target_name;
-    uint32_t  *target_len;
     bam_hdr_t *hdr;
 
     // Check output text size
@@ -877,18 +877,27 @@ static bam_hdr_t * finish_merged_header(merged_header_t *merged_hdr) {
     hdr = bam_hdr_init();
     if (hdr == NULL) goto memfail;
 
-    // Try to shrink targets arrays to correct size
-    target_name = realloc(merged_hdr->target_name,
-                          merged_hdr->n_targets * sizeof(*target_name));
-    target_len = realloc(merged_hdr->target_len,
-                         merged_hdr->n_targets * sizeof(*target_len));
-
     // Transfer targets arrays to new header
-    hdr->n_targets   = merged_hdr->n_targets;
-    hdr->target_name = target_name ? target_name : merged_hdr->target_name;
-    hdr->target_len  = target_len ? target_len : merged_hdr->target_len;
-    merged_hdr->target_name = NULL;
-    merged_hdr->target_len  = NULL;
+    hdr->n_targets = merged_hdr->n_targets;
+    if (hdr->n_targets > 0) {
+        // Try to shrink targets arrays to correct size
+        hdr->target_name = realloc(merged_hdr->target_name,
+                                   hdr->n_targets * sizeof(char*));
+        if (!hdr->target_name) hdr->target_name = merged_hdr->target_name;
+
+        hdr->target_len = realloc(merged_hdr->target_len,
+                                  hdr->n_targets * sizeof(uint32_t));
+        if (!hdr->target_len) hdr->target_len = merged_hdr->target_len;
+
+        // These have either been freed by realloc() or, in the unlikely
+        // event that failed, have had their ownership transferred to hdr
+        merged_hdr->target_name = NULL;
+        merged_hdr->target_len  = NULL;
+    }
+    else {
+        hdr->target_name = NULL;
+        hdr->target_len  = NULL;
+    }
 
     // Allocate text
     text = hdr->text = malloc(txt_sz + 1);
@@ -1350,21 +1359,24 @@ int bam_merge_core(int by_qname, const char *out, const char *headers, int n, ch
 
 static void merge_usage(FILE *to)
 {
-    fprintf(to, "Usage: samtools merge [-nurlf] [-h inh.sam] [-b <bamlist.fofn>] <out.bam> <in1.bam> [<in2.bam> ... <inN.bam>]\n\n");
-    fprintf(to, "Options:\n");
-    fprintf(to, "  -n             sort by read names\n");
-    fprintf(to, "  -r             attach RG tag (inferred from file names)\n");
-    fprintf(to, "  -u             uncompressed BAM output\n");
-    fprintf(to, "  -f             overwrite the output BAM if exist\n");
-    fprintf(to, "  -1             compress level 1\n");
-    fprintf(to, "  -l INT         compression level, from 0 to 9 [-1]\n");
-    fprintf(to, "  -@ INT         number of BAM compression threads [0]\n");
-    fprintf(to, "  -R STR         merge file in the specified region STR [all]\n");
-    fprintf(to, "  -h FILE        copy the header in FILE to <out.bam> [in1.bam]\n");
-    fprintf(to, "  -c             combine RG tags with colliding IDs rather than amending them\n");
-    fprintf(to, "  -p             combine PG tags with colliding IDs rather than amending them\n");
-    fprintf(to, "  -s VALUE       override random seed\n");
-    fprintf(to, "  -b FILE        list of input BAM filenames, one per line [null]\n");
+    fprintf(to,
+"Usage: samtools merge [-nurlf] [-h inh.sam] [-b <bamlist.fofn>] <out.bam> <in1.bam> [<in2.bam> ... <inN.bam>]\n"
+"\n"
+"Options:\n"
+"  -n         Sort by read names\n"
+"  -r         Attach RG tag (inferred from file names)\n"
+"  -u         Uncompressed BAM output\n"
+"  -f         Overwrite the output BAM if exist\n"
+"  -1         Compress level 1\n"
+"  -l INT     Compression level, from 0 to 9 [-1]\n"
+"  -R STR     Merge file in the specified region STR [all]\n"
+"  -h FILE    Copy the header in FILE to <out.bam> [in1.bam]\n"
+"  -c         Combine @RG headers with colliding IDs [alter IDs to be distinct]\n"
+"  -p         Combine @PG headers with colliding IDs [alter IDs to be distinct]\n"
+"  -s VALUE   Override random seed\n"
+"  -b FILE    List of input BAM filenames, one per line [null]\n"
+"  -@, --threads INT\n"
+"             Number of BAM/CRAM compression threads [0]\n");
     sam_global_opt_help(to, "-.O..");
 }
 
@@ -1379,6 +1391,7 @@ int bam_merge(int argc, char *argv[])
     sam_global_args ga = SAM_GLOBAL_ARGS_INIT;
     static const struct option lopts[] = {
         SAM_OPT_GLOBAL_OPTIONS('-', 0, 'O', 0, 0),
+        { "threads", required_argument, NULL, '@' },
         { NULL, 0, NULL, 0 }
     };
 
@@ -1633,8 +1646,9 @@ int bam_sort_core_ext(int is_by_qname, const char *fn, const char *prefix,
     buf = NULL;
     fp = sam_open_format(fn, "r", in_fmt);
     if (fp == NULL) {
-        fprintf(stderr, "[bam_sort_core] fail to open file %s\n", fn);
-        return -1;
+        const char *message = strerror(errno);
+        fprintf(stderr, "[bam_sort_core] fail to open '%s': %s\n", fn, message);
+        return -2;
     }
     header = sam_hdr_read(fp);
     if (header == NULL) {
@@ -1721,7 +1735,7 @@ int bam_sort_core(int is_by_qname, const char *fn, const char *prefix, size_t ma
     return ret;
 }
 
-static int sort_usage(FILE *fp, int status)
+static void sort_usage(FILE *fp)
 {
     fprintf(fp,
 "Usage: samtools sort [options...] [in.bam]\n"
@@ -1730,43 +1744,31 @@ static int sort_usage(FILE *fp, int status)
 "  -m INT     Set maximum memory per thread; suffix K/M/G recognized [768M]\n"
 "  -n         Sort by read name\n"
 "  -o FILE    Write final output to FILE rather than standard output\n"
-"  -O FORMAT  Write output as FORMAT ('sam'/'bam'/'cram')   (either -O or\n"
-"  -T PREFIX  Write temporary files to PREFIX.nnnn.bam       -T is required)\n"
-"  -@ INT     Set number of sorting and compression threads [1]\n");
+"  -T PREFIX  Write temporary files to PREFIX.nnnn.bam\n"
+"  -@, --threads INT\n"
+"             Set number of sorting and compression threads [1]\n");
     sam_global_opt_help(fp, "-.O..");
-    fprintf(fp, "\n"
-"Legacy usage: samtools sort [options...] <in.bam> <out.prefix>\n"
-"Options:\n"
-"  -f         Use <out.prefix> as full final filename rather than prefix\n"
-"  -o         Write final output to stdout rather than <out.prefix>.bam\n"
-"  -l,m,n,@   Similar to corresponding options above\n");
-    return status;
 }
 
 int bam_sort(int argc, char *argv[])
 {
     size_t max_mem = 768<<20; // 512MB
-    int c, i, modern, nargs, is_by_qname = 0, is_stdout = 0, ret = EXIT_SUCCESS, n_threads = 0, level = -1, full_path = 0;
-    char *fnout = "-", modeout[12], *tmpprefix = NULL;
-    kstring_t fnout_buffer = { 0, 0, NULL };
+    int c, nargs, is_by_qname = 0, ret, o_seen = 0, n_threads = 0, level = -1;
+    char *fnout = "-", modeout[12];
+    kstring_t tmpprefix = { 0, 0, NULL };
     sam_global_args ga = SAM_GLOBAL_ARGS_INIT;
 
-    modern = 0;
-    for (i = 1; i < argc; ++i)
-        if (argv[i][0] == '-' && strpbrk(argv[i], "OT")) { modern = 1; break; }
+    static const struct option lopts[] = {
+        SAM_OPT_GLOBAL_OPTIONS('-', 0, 'O', 0, 0),
+        { "threads", required_argument, NULL, '@' },
+        { NULL, 0, NULL, 0 }
+    };
 
-    if (modern) {
-        static const struct option lopts[] = {
-            SAM_OPT_GLOBAL_OPTIONS('-', 0, 'O', 0, 0),
-            { NULL, 0, NULL, 0 }
-        };
-
-        while ((c = getopt_long(argc, argv, "l:m:no:O:T:@:", lopts, NULL)) >= 0) {
-            switch (c) {
-            case 'f': full_path = 1; break;
-            case 'o': fnout = optarg; break;
-            case 'n': is_by_qname = 1; break;
-            case 'm': {
+    while ((c = getopt_long(argc, argv, "l:m:no:O:T:@:", lopts, NULL)) >= 0) {
+        switch (c) {
+        case 'o': fnout = optarg; o_seen = 1; break;
+        case 'n': is_by_qname = 1; break;
+        case 'm': {
                 char *q;
                 max_mem = strtol(optarg, &q, 0);
                 if (*q == 'k' || *q == 'K') max_mem <<= 10;
@@ -1774,69 +1776,56 @@ int bam_sort(int argc, char *argv[])
                 else if (*q == 'g' || *q == 'G') max_mem <<= 30;
                 break;
             }
-            case 'T': tmpprefix = optarg; break;
-            case '@': n_threads = atoi(optarg); break;
-            case 'l': level = atoi(optarg); break;
+        case 'T': kputs(optarg, &tmpprefix); break;
+        case '@': n_threads = atoi(optarg); break;
+        case 'l': level = atoi(optarg); break;
 
-            default:  if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
-                      /* else fall-through */
-            case '?': return sort_usage(stderr, EXIT_FAILURE);
-            }
-        }
-    } else {
-        while ((c = getopt(argc, argv, "fnom:@:l:")) >= 0) {
-            switch (c) {
-            case 'f': full_path = 1; break;
-            case 'o': is_stdout = 1; break;
-            case 'n': is_by_qname = 1; break;
-            case 'm': {
-                char *q;
-                max_mem = strtol(optarg, &q, 0);
-                if (*q == 'k' || *q == 'K') max_mem <<= 10;
-                else if (*q == 'm' || *q == 'M') max_mem <<= 20;
-                else if (*q == 'g' || *q == 'G') max_mem <<= 30;
-                break;
-            }
-            case '@': n_threads = atoi(optarg); break;
-            case 'l': level = atoi(optarg); break;
-            default: return sort_usage(stderr, EXIT_FAILURE);
-            }
+        default:  if (parse_sam_global_opt(c, optarg, lopts, &ga) == 0) break;
+                  /* else fall-through */
+        case '?': sort_usage(stderr); ret = EXIT_FAILURE; goto sort_end;
         }
     }
 
     nargs = argc - optind;
-    if (argc == 1)
-        return sort_usage(stdout, EXIT_SUCCESS);
-    else if (modern? (nargs > 1) : (nargs != 2))
-        return sort_usage(stderr, EXIT_FAILURE);
+    if (nargs == 0 && isatty(STDIN_FILENO)) {
+        sort_usage(stdout);
+        ret = EXIT_SUCCESS;
+        goto sort_end;
+    }
+    else if (nargs >= 2) {
+        // If exactly two, user probably tried to specify legacy <out.prefix>
+        if (nargs == 2)
+            fprintf(stderr, "[bam_sort] Use -T PREFIX / -o FILE to specify temporary and final output files\n");
 
-    if (!modern) {
-        if (is_stdout) fnout = "-";
-        else if (full_path) fnout = argv[optind+1];
-        else {
-            ksprintf(&fnout_buffer, "%s.bam", argv[optind+1]);
-            fnout = fnout_buffer.s;
-        }
-        tmpprefix = argv[optind+1];
+        sort_usage(stderr);
+        ret = EXIT_FAILURE;
+        goto sort_end;
     }
 
     strcpy(modeout, "wb");
     sam_open_mode(modeout+1, fnout, NULL);
     if (level >= 0) sprintf(strchr(modeout, '\0'), "%d", level < 9? level : 9);
 
-    if (tmpprefix == NULL) {
-        fprintf(stderr, "[bam_sort] no prefix specified for temporary files (use -T option)\n");
+    if (tmpprefix.l == 0)
+        ksprintf(&tmpprefix, "%s.tmp", (nargs > 0)? argv[optind] : "STDIN");
+
+    ret = bam_sort_core_ext(is_by_qname, (nargs > 0)? argv[optind] : "-",
+                            tmpprefix.s, fnout, modeout, max_mem, n_threads,
+                            &ga.in, &ga.out);
+    if (ret >= 0)
+        ret = EXIT_SUCCESS;
+    else {
+        char dummy[4];
+        // If we failed on opening the input file & it has no .bam/.cram/etc
+        // extension, the user probably tried legacy -o <infile> <out.prefix>
+        if (ret == -2 && o_seen && nargs > 0 && sam_open_mode(dummy, argv[optind], NULL) < 0)
+            fprintf(stderr, "[bam_sort] Note the <out.prefix> argument has been replaced by -T/-o options\n");
+
         ret = EXIT_FAILURE;
-        goto sort_end;
     }
 
-    if (bam_sort_core_ext(is_by_qname, (nargs > 0)? argv[optind] : "-",
-                          tmpprefix, fnout, modeout, max_mem, n_threads,
-                          &ga.in, &ga.out) < 0)
-        ret = EXIT_FAILURE;
-
 sort_end:
-    free(fnout_buffer.s);
+    free(tmpprefix.s);
     sam_global_args_free(&ga);
 
     return ret;

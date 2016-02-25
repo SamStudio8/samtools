@@ -1,5 +1,5 @@
 '\" t
-.TH samtools 1 "2 February 2015" "samtools-1.2" "Bioinformatics tools"
+.TH samtools 1 "15 December 2015" "samtools-1.3" "Bioinformatics tools"
 .SH NAME
 samtools \- Utilities for the Sequence Alignment/Map (SAM) format
 .\"
@@ -85,7 +85,7 @@ samtools fasta input.bam > output.fasta
 .PP
 samtools addreplacerg -r 'ID:fish' -r 'LB:1334' -r 'SM:alpha' -o output.bam input.bam
 .PP
-samtools bamshuf aln.sorted.bam reads.together.bam
+samtools collate aln.sorted.bam aln.name_collated.bam
 .PP
 samtools depad input.bam
 
@@ -187,16 +187,25 @@ multiple times if they overlap more than one of the specified regions.
 
 Examples of region specifications:
 .TP 10
-`chr1'
-Output all alignments mapped to the reference sequence named `chr1' (i.e. @SQ SN:chr1) .
+.B chr1
+Output all alignments mapped to the reference sequence named `chr1' (i.e. @SQ SN:chr1).
 .TP
-`chr2:1000000'
+.B chr2:1000000
 The region on chr2 beginning at base position 1,000,000 and ending at the
 end of the chromosome.
 .TP
-`chr3:1000-2000'
+.B chr3:1000-2000
 The 1001bp region on chr3 beginning at base position 1,000 and ending at base
 position 2,000 (including both end positions).
+.TP
+.B '*'
+Output the unmapped reads at the end of the file.
+(This does not include any unmapped reads placed on a reference sequence
+alongside their mapped mates.)
+.TP
+.B .
+Output all alignments.
+(Mostly unnecessary as not specifying a region at all has the same effect.)
 .RE
 
 .B OPTIONS:
@@ -349,7 +358,8 @@ samtools sort
 .RB [ -O
 .IR format ]
 .RB [ -n ]
-.BI "-T " out.prefix
+.RB [ -T
+.IR tmpprefix ]
 .RB [ -@
 .IR threads "] [" in.sam | in.bam | in.cram ]
 .ad
@@ -368,7 +378,7 @@ when
 .B -o
 is used.
 This command will also create temporary files
-.IB out.prefix . %d .bam
+.IB tmpprefix . %d .bam
 as needed when the entire alignment data cannot fit into memory
 (as controlled via the
 .B -m
@@ -413,53 +423,33 @@ By default, samtools tries to select a format based on the
 .B -o
 filename extension; if output is to standard output or no format can be
 deduced,
-.B -O
-must be used.
+.B bam
+is selected.
 .TP
 .BI "-T " PREFIX
 Write temporary files to
 .IB PREFIX . nnnn .bam.
-This option is required.
+By default, any temporary files are written alongside the input file, as
+.IB in.bam .tmp. nnnn .bam.
 .TP
 .BI "-@ " INT
 Set number of sorting and compression threads.
 By default, operation is single-threaded.
 .PP
-For compatibility with existing scripts,
+Historically
 .B samtools sort
-also accepts the previous less flexible way of specifying the final and
+also accepted a less flexible way of specifying the final and
 temporary output filenames:
-.PP
+.IP
 samtools sort
-.RB [ -nof "] [" -m
-.IR maxMem ]
+.RB [ -f "] [" -o ]
 .I in.bam out.prefix
-
-The sorted BAM output is written to
-.IB out.prefix .bam
-(or as determined by the
-.B -o
-and
-.B -f
-options below) and any temporary files are written alongside as
-.IB out.prefix . %d .bam.
-
-.TP 5
-.B -o
-Output the final alignment to the standard output.
-.TP
-.B -f
-Use
-.I out.prefix
-as the full output path and do not append
-.B .bam
-suffix.
-.TP
-.BR -l ", " -m ", " -n ", " -@
-Accepted with the same meanings as above.
 .PP
-This will eventually be removed; you should move to using the more flexible
-newer style of invocation.
+This has now been removed.
+The previous \fIout.prefix\fP argument (and \fB-f\fP option, if any)
+should be changed to an appropriate combination of \fB-T\fP \fIPREFIX\fP
+and \fB-o\fP \fIFILE\fP.  The previous \fB-o\fP option should be removed,
+as output defaults to standard output.
 .RE
 
 .TP \"-------- index
@@ -798,10 +788,19 @@ Attach an RG tag to each alignment. The tag value is inferred from file names.
 Uncompressed BAM output
 .TP
 .B -c
-Combine RG tags with colliding IDs rather than adding a suffix to differentiate them.
+When several input files contain @RG headers with the same ID, emit only one
+of them (namely, the header line from the first file we find that ID in) to
+the merged output file.
+Combining these similar headers is usually the right thing to do when the
+files being merged originated from the same file.
+
+Without \fB-c\fP, all @RG headers appear in the output file, with random
+suffices added to their IDs where necessary to differentiate them.
 .TP
 .B -p
-Combine PG tags with colliding IDs rather than adding a suffix to differentiate them.
+Similarly, for each @PG ID in the set of files to merge, use the @PG line
+of the first file we find that ID in rather than adding a suffix to
+differentiate similar IDs.
 .RE
 
 .TP \"-------- faidx
@@ -1033,6 +1032,16 @@ symbol `^' marks the start of a read. The ASCII of the character
 following `^' minus 33 gives the mapping quality. A symbol `$' marks the
 end of a read segment.
 
+Note that there are two orthogonal ways to specify locations in the
+input file; via \fB-r\fR \fIregion\fR and \fB-l\fR \fIfile\fR.  The
+former uses (and requires) an index to do random access while the
+latter streams through the file contents filtering out the specified
+regions, requiring no index.  The two may be used in conjunction.  For
+example a BED file containing locations of genes in chromosome 20
+could be specified using \fB-r 20 -l chr20.bed\fR, meaning that the
+index is used to find chromosome 20 and then it is filtered for the
+regions listed in the bed file.
+
 .B Input Options:
 .RS
 .TP 10
@@ -1061,7 +1070,13 @@ functionality; if enabled, the recommended value for BWA is 50. [0]
 .BI -d,\ --max-depth \ INT
 At a position, read maximally
 .I INT
-reads per input BAM. [250]
+reads per input file. Note that samtools has a minimum value of
+.I 8000/n
+where
+.I n
+is the number of input files given to mpileup.  This means the default
+is highly likely to be increased.  Once above the cross-sample minimum of
+8000 the -d parameter will have an effect. [250]
 .TP
 .B -E, --redo-BAQ
 Recalculate BAQ on the fly, ignore existing BQ tags
@@ -1078,8 +1093,14 @@ Exclude reads from readgroups listed in FILE (one @RG-ID per line)
 .TP
 .BI -l,\ --positions \ FILE
 BED or position list file containing a list of regions or sites where
-pileup or BCF should be generated. If BED, positions are 0-based
-half-open [null]
+pileup or BCF should be generated. Position list files contain two
+columns (chromosome and position) and start counting from 1.  BED
+files contain at least 3 columns (chromosome, start and end position)
+and are 0-based half-open.
+.br
+While it is possible to mix both position-list and BED coordinates in
+the same file, this is strongly illadvised due to the differing
+coordinate systems. [null]
 .TP
 .BI -q,\ -min-MQ \ INT
 Minimum mapping quality for an alignment to be used [0]
@@ -1220,7 +1241,7 @@ is modeled as
 Do not perform INDEL calling
 .TP
 .BI -L,\ --max-idepth \ INT
-Skip INDEL calling if the average per-sample depth is above
+Skip INDEL calling if the average per-input-file depth is above
 .IR INT .
 [250]
 .TP
@@ -1343,16 +1364,17 @@ can be specified in hex by beginning with `0x' (i.e. /^0x[0-9A-F]+/)
 or in octal by beginning with `0' (i.e. /^0[0-7]+/) [0].
 .RE
 
-.TP \"-------- bamshuf
-.B bamshuf
-samtools bamshuf
+.TP \"-------- collate
+.B collate
+samtools collate
 .RI [ options ]
 .IR in.sam | in.bam | in.cram " [" out.prefix "]"
 
-Shuffles and groups alignments by name. A faster alternative to a full
-query name sort, bamshuf ensures that reads of the same name are grouped
-together in contiguous groups, but doesn't make any guarantees about the
-order of read names between groups.
+Shuffles and groups reads together by their names.
+A faster alternative to a full query name sort,
+.B collate
+ensures that reads of the same name are grouped together in contiguous groups,
+but doesn't make any guarantees about the order of read names between groups.
 
 The output from this command should be suitable for any operation that
 requires all reads from the same template to be grouped together.
@@ -1756,6 +1778,16 @@ Look for a local file listed in the UR: header tag.
 .PP
 .SH ENVIRONMENT VARIABLES
 .PP
+.TP
+.B HTS_PATH
+A colon-separated list of directories in which to search for HTSlib plugins.
+If $HTS_PATH starts or ends with a colon or contains a double colon (\fB::\fP),
+the built-in list of directories is searched at that point in the search.
+
+If no HTS_PATH variable is defined, the built-in list of directories
+specified when HTSlib was built is used, which typically includes
+\fB/usr/local/libexec/htslib\fP and similar directories.
+
 .TP
 .B REF_PATH
 A colon separated (semi-colon on Windows) list of locations in which

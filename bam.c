@@ -23,6 +23,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.  */
 
+#include <config.h>
+
 #include <stdio.h>
 #include <ctype.h>
 #include <errno.h>
@@ -102,6 +104,9 @@ const char *bam_get_library(bam_header_t *h, const bam1_t *b)
             }
             last = *cp++;
         }
+
+        if (!ID || !LB)
+            continue;
 
         // Check it's the correct ID
         if (strncmp(rg, ID, strlen(rg)) != 0 || ID[strlen(rg)] != '\t')

@@ -35,11 +35,12 @@ int64_t med_triplet(int64_t a, int64_t b, int64_t c);
 int cmpfunc (const void * a, const void * b);
 uint64_t* copy_arr(uint64_t *source, int n, int new_n, int filter);
 
-bamcheck_bcd_t* bamcheck_base_content_baseline(double *base_prop, int n);
-bamcheck_cycles_t* bamcheck_cycles(uint64_t *cycles_arr, int n, int k);
-bamcheck_baseline_delta* bamcheck_baseline_d(uint64_t *baseline, uint64_t *count, int baseline_n, int count_n, double scalar_baseline);
-bamcheck_baseline_delta* bamcheck_baseline_d_double(double *count, int count_n, double baseline);
-bamcheck_baseline_delta* init_bamcheck_baseline_delta(int n);
+void bamcheck_stats_destroy(bamcheck_stats_t *bamcheck);
+void bamcheck_base_content_baseline(bamcheck_bcd_t *result, double *base_prop, int n);
+void bamcheck_cycles(bamcheck_cycles_t *result, uint64_t *cycles_arr, int n, int k);
+void bamcheck_baseline_d(bamcheck_baseline_delta *result, uint64_t *baseline, uint64_t *count, int baseline_n, int count_n, double scalar_baseline);
+void bamcheck_baseline_d_double(bamcheck_baseline_delta *result, double *count, int count_n, double baseline);
+void init_bamcheck_baseline_delta(bamcheck_baseline_delta *result, int n);
 uint64_t* runmed(uint64_t *cycles_arr, int n, int k);
 
 void bamcheck_quality_dropoff(stats_t *curr_stats);
@@ -51,7 +52,10 @@ double* runmed_double(double *cycles_arr, int n, int k);
 uint64_t wtd_percentile(double *cumsums, uint64_t cumsums_n, uint64_t n, int tile);
 int cmpfunc_f (const void * a, const void * b);
 double med_triplet_double(double a, double b, double c);
-void bamcheck_quality_dropoff_wrapper(stats_t *curr_stats);
-bamcheck_quality_dropoff_t* bamcheck_quality_dropoff_executor(uint64_t *cycle_counts, uint64_t cycles_n, uint64_t quals_n, uint64_t max_quals_n);
+void bamcheck_quality_dropoff(stats_t *curr_stats);
+void bamcheck_quality_dropoff_executor(bamcheck_quality_dropoff_t *result, uint64_t *cycle_counts, uint64_t cycles_n, uint64_t n_bin_quals, uint64_t max_quals_n);
+void summarise_cycles(bamcheck_cycles_summary_t *summary, uint64_t *cycle_counts, uint64_t cycles_n, uint64_t n_bin_quals, uint64_t max_quals_n);
+void init_bamcheck_cycles_summary(bamcheck_cycles_summary_t *summary, uint64_t cycles_n);
+void destroy_bamcheck_cycles_summary(bamcheck_cycles_summary_t *summary);
 
 #endif

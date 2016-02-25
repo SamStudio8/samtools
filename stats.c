@@ -39,6 +39,8 @@ DEALINGS IN THE SOFTWARE.  */
 
 #include <assert.h>
 #include <ctype.h>
+#include <config.h>
+
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -1336,10 +1338,7 @@ void cleanup_stats(stats_t* stats)
     if ( stats->rg_hash ) khash_str2int_destroy(stats->rg_hash);
     free(stats->split_name);
 
-    free(stats->bamcheck->bcd_a);
-    free(stats->bamcheck->bcd_c);
-    free(stats->bamcheck->bcd_g);
-    free(stats->bamcheck->bcd_t);
+    bamcheck_stats_destroy(stats->bamcheck);
     free(stats->bamcheck);
     free(stats);
 }

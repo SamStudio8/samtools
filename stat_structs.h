@@ -101,6 +101,7 @@ typedef struct {
     double total_mean_deviation;
 } bamcheck_bcd_t;
 
+
 typedef struct {
     uint64_t iqr_inc_contig_length;
     uint64_t iqr_inc_contig_start;
@@ -163,6 +164,12 @@ typedef struct {
     double pct_below_baseline;
     uint64_t total_count;
 } bamcheck_cycles_t;
+
+typedef struct {
+    double *cycle_means;
+    double *cycle_medians;
+    double *cycle_iqrs;
+} bamcheck_cycles_summary_t;
 
 typedef struct
 {

@@ -43,6 +43,11 @@ uint64_t* copy_arr(uint64_t *source, int n, int new_n, int filter){
     uint64_t *dest;
     dest = calloc(new_n,sizeof(uint64_t));
 
+    //TODO
+    if (dest == NULL){
+        printf("Memory not allocated.");
+    }
+
     size_t i = 0;
     size_t j = 0;
     for (; i < n; i++) {
@@ -237,9 +242,7 @@ uint64_t* runmed(uint64_t *cycles_arr, int n, int k){
     return baseline;
 }
 
-bamcheck_baseline_delta* init_bamcheck_baseline_delta(int n){
-    bamcheck_baseline_delta *delta = calloc(1, sizeof(bamcheck_baseline_delta));
-
+void init_bamcheck_baseline_delta(bamcheck_baseline_delta *delta, int n){
     delta->delta = calloc(n, sizeof(double));
     delta->n = n;
 
@@ -259,13 +262,9 @@ bamcheck_baseline_delta* init_bamcheck_baseline_delta(int n){
 
     delta->max_baseline_deviation = 0;
     delta->total_mean_deviation = 0;
-    return delta;
 }
 
-bamcheck_baseline_delta* bamcheck_baseline_d_double(double *count, int count_n, double baseline){
-
-    bamcheck_baseline_delta *result;
-    result = init_bamcheck_baseline_delta(count_n);
+void bamcheck_baseline_d_double(bamcheck_baseline_delta *result, double *count, int count_n, double baseline){
 
     int i;
     double curr_delta, above_min, above_max, below_min, below_max;
@@ -312,13 +311,9 @@ bamcheck_baseline_delta* bamcheck_baseline_d_double(double *count, int count_n, 
 
     result->above_min = above_min;
     result->above_max = above_max;
-
-    return result;
 }
-bamcheck_baseline_delta* bamcheck_baseline_d(uint64_t *baseline, uint64_t *count, int baseline_n, int count_n, double scalar_baseline){
 
-    bamcheck_baseline_delta *result;
-    result = init_bamcheck_baseline_delta(count_n);
+void bamcheck_baseline_d(bamcheck_baseline_delta *result, uint64_t *baseline, uint64_t *count, int baseline_n, int count_n, double scalar_baseline){
 
     int i;
     double curr_delta, above_min, above_max, below_min, below_max;
@@ -370,21 +365,18 @@ bamcheck_baseline_delta* bamcheck_baseline_d(uint64_t *baseline, uint64_t *count
 
     result->above_min = above_min;
     result->above_max = above_max;
-
-    return result;
 }
 
-bamcheck_cycles_t* bamcheck_cycles(uint64_t *cycles_arr, int n, int k){
-    bamcheck_cycles_t *result = calloc(1, sizeof(bamcheck_cycles_t));
-
+void bamcheck_cycles(bamcheck_cycles_t *result, uint64_t *cycles_arr, int n, int k){
     uint64_t *count;
     count = copy_arr(cycles_arr, n, n, 0);
     uint64_t *baseline;
     baseline = runmed(cycles_arr, n, k);
 
     // Calculate baseline and counts above/below
-    bamcheck_baseline_delta* deviation;
-    deviation = bamcheck_baseline_d(baseline, count, n, n, 0);
+    bamcheck_baseline_delta *deviation = calloc(1, sizeof(bamcheck_baseline_delta));
+    init_bamcheck_baseline_delta(result, n);
+    bamcheck_baseline_d(deviation, baseline, count, n, n, 0);
 
     result->pct_above_baseline = (double)deviation->above_total / (double)deviation->total_count * 100;
     result->pct_below_baseline = (double)deviation->below_total / (double)deviation->total_count * 100;
@@ -394,8 +386,6 @@ bamcheck_cycles_t* bamcheck_cycles(uint64_t *cycles_arr, int n, int k){
     free(deviation);
     free(count);
     free(baseline);
-
-    return result;
 }
 
 void bamcheck_indel_peaks(stats_t *curr_stats){
@@ -409,35 +399,42 @@ void bamcheck_indel_peaks(stats_t *curr_stats){
         }
     }
 
-    if (ic_lines > 0){
-        bamcheck_cycles_t *result;
-        result = bamcheck_cycles(curr_stats->ins_cycles_1st, ic_lines, k);
+    bamcheck_cycles_t *result = calloc(1, sizeof(bamcheck_cycles_t));
+    if (ic_lines > (k/2)){
+        bamcheck_cycles(result, curr_stats->ins_cycles_1st, ic_lines, k);
         curr_stats->bamcheck->fwd_ins_above_baseline_pct = result->pct_above_baseline;
         curr_stats->bamcheck->fwd_ins_below_baseline_pct = result->pct_below_baseline;
-        free(result);
 
-        result = bamcheck_cycles(curr_stats->ins_cycles_2nd, ic_lines, k);
+        bamcheck_cycles(result, curr_stats->ins_cycles_2nd, ic_lines, k);
         curr_stats->bamcheck->rev_ins_above_baseline_pct = result->pct_above_baseline;
         curr_stats->bamcheck->rev_ins_below_baseline_pct = result->pct_below_baseline;
-        free(result);
 
-        result = bamcheck_cycles(curr_stats->del_cycles_1st, ic_lines, k);
+        bamcheck_cycles(result, curr_stats->del_cycles_1st, ic_lines, k);
         curr_stats->bamcheck->fwd_del_above_baseline_pct = result->pct_above_baseline;
         curr_stats->bamcheck->fwd_del_below_baseline_pct = result->pct_below_baseline;
-        free(result);
 
-        result = bamcheck_cycles(curr_stats->del_cycles_2nd, ic_lines, k);
+        bamcheck_cycles(result, curr_stats->del_cycles_2nd, ic_lines, k);
         curr_stats->bamcheck->rev_del_above_baseline_pct = result->pct_above_baseline;
         curr_stats->bamcheck->rev_del_below_baseline_pct = result->pct_below_baseline;
-        free(result);
     }
+    else {
+        // Not enough fragment qualities to look at baseline windows
+        curr_stats->bamcheck->fwd_ins_above_baseline_pct = -1;
+        curr_stats->bamcheck->fwd_ins_below_baseline_pct = -1;
+        curr_stats->bamcheck->rev_ins_above_baseline_pct = -1;
+        curr_stats->bamcheck->rev_ins_below_baseline_pct = -1;
+        curr_stats->bamcheck->fwd_del_above_baseline_pct = -1;
+        curr_stats->bamcheck->fwd_del_below_baseline_pct = -1;
+        curr_stats->bamcheck->rev_del_above_baseline_pct = -1;
+        curr_stats->bamcheck->rev_del_below_baseline_pct = -1;
+    }
+    free(result);
 
 }
 
-bamcheck_bcd_t* bamcheck_base_content_baseline(double *base_prop, int n) {
-    bamcheck_bcd_t *result = calloc(1, sizeof(bamcheck_bcd_t));
-
-    bamcheck_baseline_delta* deviation;
+void bamcheck_base_content_baseline(bamcheck_bcd_t *result, double *base_prop, int n) {
+    bamcheck_baseline_delta *deviation = calloc(1, sizeof(bamcheck_baseline_delta));
+    init_bamcheck_baseline_delta(deviation, n);
 
     double mean = 0.0;
     int64_t i;
@@ -446,7 +443,7 @@ bamcheck_bcd_t* bamcheck_base_content_baseline(double *base_prop, int n) {
         total += base_prop[i];
     }
     mean = total / (double)n;
-    deviation = bamcheck_baseline_d_double(base_prop, n, mean);
+    bamcheck_baseline_d_double(deviation, base_prop, n, mean);
 
     result->mean_above_baseline = deviation->above_total / deviation->n;
     result->mean_below_baseline = deviation->below_total / deviation->n;
@@ -464,7 +461,6 @@ bamcheck_bcd_t* bamcheck_base_content_baseline(double *base_prop, int n) {
 
     free(deviation->delta);
     free(deviation);
-    return result;
 }
 
 void bamcheck_base_content_deviation(stats_t *curr_stats){
@@ -485,17 +481,16 @@ void bamcheck_base_content_deviation(stats_t *curr_stats){
         gcc_t[ibase] = 100.*acgtno_count->t/acgt_sum;
     }
 
-    curr_stats->bamcheck->bcd_a = bamcheck_base_content_baseline(gcc_a, curr_stats->max_len);
-    curr_stats->bamcheck->bcd_c = bamcheck_base_content_baseline(gcc_c, curr_stats->max_len);
-    curr_stats->bamcheck->bcd_g = bamcheck_base_content_baseline(gcc_g, curr_stats->max_len);
-    curr_stats->bamcheck->bcd_t = bamcheck_base_content_baseline(gcc_t, curr_stats->max_len);
+    bamcheck_base_content_baseline(curr_stats->bamcheck->bcd_a, gcc_a, curr_stats->max_len);
+    bamcheck_base_content_baseline(curr_stats->bamcheck->bcd_c, gcc_c, curr_stats->max_len);
+    bamcheck_base_content_baseline(curr_stats->bamcheck->bcd_g, gcc_g, curr_stats->max_len);
+    bamcheck_base_content_baseline(curr_stats->bamcheck->bcd_t, gcc_t, curr_stats->max_len);
 }
 
 void calculate_bamcheck(stats_t *curr_stats){
     bamcheck_indel_peaks(curr_stats);
     bamcheck_base_content_deviation(curr_stats);
-    bamcheck_quality_dropoff_wrapper(curr_stats);
-
+    bamcheck_quality_dropoff(curr_stats);
 }
 
 bamcheck_stats_t* bamcheck_stats_init()
@@ -514,17 +509,26 @@ bamcheck_stats_t* bamcheck_stats_init()
     bamcheck->rev_del_above_baseline_pct = 0;
     bamcheck->rev_del_below_baseline_pct = 0;
 
+    bamcheck->bcd_a = calloc(1, sizeof(bamcheck_bcd_t));
+    bamcheck->bcd_c = calloc(1, sizeof(bamcheck_bcd_t));
+    bamcheck->bcd_g = calloc(1, sizeof(bamcheck_bcd_t));
+    bamcheck->bcd_t = calloc(1, sizeof(bamcheck_bcd_t));
+
+    bamcheck->fwd_dropoff = calloc(1, sizeof(bamcheck_quality_dropoff_t));
+    bamcheck->rev_dropoff = calloc(1, sizeof(bamcheck_quality_dropoff_t));
+
     return bamcheck;
 }
 
-typedef struct {
-    double q1;
-    double median;
-    double q3;
-    double mean;
-    double iqr;
-    struct summary_stat_t *next;
-} summary_stat_t;
+void bamcheck_stats_destroy(bamcheck_stats_t *bamcheck){
+    free(bamcheck->bcd_a);
+    free(bamcheck->bcd_c);
+    free(bamcheck->bcd_g);
+    free(bamcheck->bcd_t);
+
+    free(bamcheck->fwd_dropoff);
+    free(bamcheck->rev_dropoff);
+}
 
 typedef struct {
     uint64_t start_longest_trend_pos;
@@ -686,26 +690,17 @@ bamcheck_cycles_trends_t* cycle_trends(double *cycles, uint64_t n, double cutoff
     return result;
 }
 
-void bamcheck_quality_dropoff_wrapper(stats_t *curr_stats){
-    curr_stats->bamcheck->fwd_dropoff = bamcheck_quality_dropoff_executor(curr_stats->quals_1st, curr_stats->max_len - 1, curr_stats->nquals, curr_stats->max_qual);
-    curr_stats->bamcheck->rev_dropoff = bamcheck_quality_dropoff_executor(curr_stats->quals_2nd, curr_stats->max_len - 1, curr_stats->nquals, curr_stats->max_qual);
+void bamcheck_quality_dropoff(stats_t *curr_stats){
+    bamcheck_quality_dropoff_executor(curr_stats->bamcheck->fwd_dropoff, curr_stats->quals_1st, curr_stats->max_len - 1, curr_stats->nquals, curr_stats->max_qual);
+    bamcheck_quality_dropoff_executor(curr_stats->bamcheck->rev_dropoff, curr_stats->quals_2nd, curr_stats->max_len - 1, curr_stats->nquals, curr_stats->max_qual);
 }
 
-bamcheck_quality_dropoff_t* bamcheck_quality_dropoff_executor(uint64_t *cycle_counts, uint64_t cycles_n, uint64_t n_bin_quals, uint64_t max_quals_n){
-
-    //TODO Abstract summarisation of cycles...
-    bamcheck_quality_dropoff_t *result = calloc(1, sizeof(bamcheck_quality_dropoff_t));
-    summary_stat_t *cycle_summary;
-    cycle_summary = NULL;
-
-    double cycle_means[cycles_n];
-    double cycle_medians[cycles_n];
-    double cycle_iqrs[cycles_n];
+void summarise_cycles(bamcheck_cycles_summary_t *summary, uint64_t *cycle_counts, uint64_t cycles_n, uint64_t n_bin_quals, uint64_t max_quals_n){
 
     double cycle_quality[max_quals_n];
     int64_t ibase;
     int iqual;
-    // FORWARDS
+
     // Fragments by cycle...
     for (ibase = 0; ibase <= cycles_n; ibase++) {
         // ...cycle fragments by quality
@@ -720,6 +715,7 @@ bamcheck_quality_dropoff_t* bamcheck_quality_dropoff_executor(uint64_t *cycle_co
                 zeros++;
             }
         }
+
         //qsort(cycle_quality, curr_stats->max_qual, sizeof(double), cmpfunc_f);
         double sum_weight = 0;
         double sum_weighted_qual = 0;
@@ -748,64 +744,42 @@ bamcheck_quality_dropoff_t* bamcheck_quality_dropoff_executor(uint64_t *cycle_co
 
         qsort(weighted_quals, max_quals_n - zeros, sizeof(double), cmpfunc_f);
 
-        summary_stat_t *new_summary = calloc(1, sizeof(summary_stat_t));
-        //new_summary->q1 = percentile(&cycle_quality[zeros], curr_stats->max_qual - zeros, 25);
-        //new_summary->median = percentile(&cycle_quality[zeros], curr_stats->max_qual - zeros, 50);
-        //new_summary->q3 = percentile(&cycle_quality[zeros], curr_stats->max_qual - zeros, 75);
-        new_summary->q1 = cum_sum_index[wtd_percentile(cum_sum_weight, max_quals_n - zeros, sum_weight, 25)];
-        new_summary->median = cum_sum_index[wtd_percentile(cum_sum_weight, max_quals_n - zeros, sum_weight, 50)];
-        new_summary->q3 = cum_sum_index[wtd_percentile(cum_sum_weight, max_quals_n - zeros, sum_weight, 75)];
-        new_summary->iqr = new_summary->q3 - new_summary->q1;
-        new_summary->mean = sum_weighted_qual / sum_weight;
-        new_summary->next = NULL;
-
-        cycle_means[ibase] = new_summary->mean;
-        cycle_iqrs[ibase] = new_summary->iqr;
-        cycle_medians[ibase] = new_summary->median;
-
-        if (cycle_summary == NULL) {
-            cycle_summary = new_summary;
-        }
-        else {
-            summary_stat_t *curr_summary = cycle_summary;
-            while(curr_summary->next != NULL){
-                curr_summary = curr_summary->next;
-            }
-            curr_summary->next = new_summary;
-        }
+        summary->cycle_means[ibase] = sum_weighted_qual / sum_weight;
+        summary->cycle_iqrs[ibase] = cum_sum_index[wtd_percentile(cum_sum_weight, max_quals_n - zeros, sum_weight, 75)] - cum_sum_index[wtd_percentile(cum_sum_weight, max_quals_n - zeros, sum_weight, 25)];
+        summary->cycle_medians[ibase] = cum_sum_index[wtd_percentile(cum_sum_weight, max_quals_n - zeros, sum_weight, 50)];
     }
+}
 
-    //TODO Abstract summarisation of cycle summaries
-    int cycle = 0;
+void init_bamcheck_cycles_summary(bamcheck_cycles_summary_t *summary, uint64_t cycles_n){
+    summary->cycle_means = calloc(cycles_n, sizeof(double));
+    summary->cycle_medians = calloc(cycles_n, sizeof(double));
+    summary->cycle_iqrs = calloc(cycles_n, sizeof(double));
+}
+void destroy_bamcheck_cycles_summary(bamcheck_cycles_summary_t *summary){
+    free(summary->cycle_means);
+    free(summary->cycle_medians);
+    free(summary->cycle_iqrs);
+}
+
+void bamcheck_quality_dropoff_executor(bamcheck_quality_dropoff_t *result, uint64_t *cycle_counts, uint64_t cycles_n, uint64_t n_bin_quals, uint64_t max_quals_n){
+
+    bamcheck_cycles_summary_t *summary = calloc(1, sizeof(bamcheck_cycles_summary_t));
+    init_bamcheck_cycles_summary(summary, cycles_n);
+    summarise_cycles(summary, cycle_counts, cycles_n, n_bin_quals, max_quals_n);
+
     int drop = 3;
-    int j = 0;
-    summary_stat_t *curr_summary = cycle_summary;
-    /*
-    while(curr_summary->next != NULL){
-        if (!(cycle < drop || cycle > curr_stats->max_len - drop)){
-            cycle_means[j] = curr_summary->mean;
-            cycle_medians[j] = curr_summary->median;
-            cycle_iqrs[j] = curr_summary->iqr;
-            // Does this miss the last summary?
-            j++;
-        }
-        cycle++;
-        curr_summary = curr_summary->next;
-    }
-    */
-
     int k = 25;
     double iqr_cutoff = 10.0;
 
     bamcheck_cycles_trends_t *trends;
 
-    trends = cycle_trends(&cycle_iqrs[drop], cycles_n - (drop+1), iqr_cutoff);
+    trends = cycle_trends(&summary->cycle_iqrs[drop], cycles_n - (drop+1), iqr_cutoff);
     result->iqr_inc_contig_start = trends->start_longest_trend_above_thres;
     result->iqr_inc_contig_length = trends->length_longest_trend_above_thres;
     free(trends);
 
     double *mean_baseline;
-    mean_baseline = runmed_double(cycle_means, cycles_n, k);
+    mean_baseline = runmed_double(summary->cycle_means, cycles_n, k);
     trends = cycle_trends(&mean_baseline[drop], cycles_n - (drop+1), 0);
     result->runmed_mean_dec_contig_start = trends->start_longest_trend_neg;
     result->runmed_mean_dec_contig_length = trends->length_longest_trend_neg;
@@ -813,19 +787,10 @@ bamcheck_quality_dropoff_t* bamcheck_quality_dropoff_executor(uint64_t *cycle_co
     result->runmed_mean_dec_low = mean_baseline[trends->start_longest_trend_neg+(drop-2)+ trends->length_longest_trend_neg];
     result->runmed_mean_dec_range = result->runmed_mean_dec_high - result->runmed_mean_dec_low;
     free(trends);
-
     free(mean_baseline);
 
-    summary_stat_t *last_summary;
-    curr_summary = cycle_summary;
-    while(curr_summary->next != NULL){
-        last_summary = curr_summary;
-        curr_summary = curr_summary->next;
-        free(last_summary);
-    }
-    free(curr_summary);
-
-    return result;
+    destroy_bamcheck_cycles_summary(summary);
+    free(summary);
 }
 
 double percentile(double *values, uint64_t n, int tile){
@@ -851,6 +816,11 @@ uint64_t wtd_percentile(double *cumsums, uint64_t cumsums_n, uint64_t n, int til
     }
     else {
         target = (int)k_index;
+    }
+
+    //TODO Avoid cases where n is too small
+    if( cumsums_n == 0 ){
+        return -1;
     }
 
     size_t i;
