@@ -794,13 +794,13 @@ sub filter_sam
             if ($libraries && /^\@RG/) {
                 my ($id) = /\tID:([^\t]+)/;
                 my ($lib) = /\tLB:([^\t]+)/;
-                if (exists($libraries->{$lib})) {
+                if (exists($libraries->{$lib||""})) {
                     $lib_read_groups->{$id} = 1;
                 }
             }
             if ($read_groups && /^\@RG/) {
                 my ($id) = /\tID:([^\t]+)/;
-                next if (!exists($read_groups->{$id}));
+                next if (!exists($read_groups->{$id||""}));
             }
             next if ($no_sq && /^\@SQ/);
             if ($no_m5 && /^\@SQ/) {
@@ -820,9 +820,9 @@ sub filter_sam
                     for my $i (11 .. $#sam) {
                         last if (($group) = $sam[$i] =~ /^RG:Z:(.*)/);
                     }
-                    next if ($read_groups && !exists($read_groups->{$group}));
+                    next if ($read_groups && !exists($read_groups->{$group||""}));
                     next if ($lib_read_groups
-                             && !exists($lib_read_groups->{$group}));
+                             && !exists($lib_read_groups->{$group||""}));
                 }
                 if ($region) {
                     my $in_range = 0;
@@ -1777,6 +1777,8 @@ sub test_view
         ['reg10', 1,
          { region => [['ref1', 15, 45]], read_groups => { grp2 => 1 }},
          ['-r', 'grp2'], ['ref1:15-45']],
+        # Unmapped reads
+        ['reg_unmapped1', 1, { region => [['*']] }, [], ['*']],
 
         # Regions from BED files.  Regions here need to be kept in synch.
         # with the .bed files in test/dat.  Note that BED counts from
@@ -2378,7 +2380,11 @@ sub test_quickcheck
         'quickcheck/2.quickcheck.badheader.bam',
         'quickcheck/3.quickcheck.ok.bam',
         'quickcheck/4.quickcheck.ok.bam',
-        'quickcheck/5.quickcheck.truncated.cram',
+        'quickcheck/5.quickcheck.scramble30.truncated.cram',
+        'quickcheck/6.quickcheck.cram21.ok.cram',
+        'quickcheck/7.quickcheck.cram30.ok.cram',
+        'quickcheck/8.quickcheck.cram21.truncated.cram',
+        'quickcheck/9.quickcheck.cram30.truncated.cram',
         );
 
     my $all_testfiles;
@@ -2387,12 +2393,10 @@ sub test_quickcheck
         $all_testfiles .= " $$opts{path}/$fn";
         test_cmd($opts, out => 'dat/empty.expected',
             want_fail => ($fn !~ /[.]ok[.]/),
-            expect_fail => ($fn =~ /truncated[.]cram/)? 1 : 0,
             cmd => "$$opts{bin}/samtools quickcheck $$opts{path}/$fn");
     }
 
     test_cmd($opts, out => 'quickcheck/all.expected', want_fail => 1,
-        expect_fail => 1, # due to 5.quickcheck.truncated.cram
         cmd => "$$opts{bin}/samtools quickcheck -v $all_testfiles | sed 's,.*/quickcheck/,,'");
 }
 

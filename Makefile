@@ -30,9 +30,9 @@ LIBS     =
 LOBJS=      bam_aux.o bam.o bam_import.o sam.o \
             sam_header.o bam_plbuf.o
 AOBJS=      bam_index.o bam_plcmd.o sam_view.o \
-            bam_cat.o bam_md.o bam_reheader.o bam_sort.o bedidx.o kprobaln.o \
+            bam_cat.o bam_md.o bam_reheader.o bam_sort.o bedidx.o \
             bam_rmdup.o bam_rmdupse.o bam_mate.o bam_stat.o bam_color.o \
-            bamtk.o bam2bcf.o bam2bcf_indel.o errmod.o sample.o sam_opts.o \
+            bamtk.o bam2bcf.o bam2bcf_indel.o sample.o sam_opts.o \
             cut_target.o phase.o bam2depth.o padding.o bedcov.o bamshuf.o \
             faidx.o dict.o stats.o stats_isize.o bam_flags.o bam_split.o \
             bam_tview.o bam_tview_curses.o bam_tview_html.o bam_lpileup.o \
@@ -98,7 +98,7 @@ config.h:
 include config.mk
 
 
-PACKAGE_VERSION = 1.3
+PACKAGE_VERSION = 1.3.1
 
 # If building from a Git repository, replace $(PACKAGE_VERSION) with the Git
 # description of the working tree: either a release tag with the same value
@@ -138,7 +138,7 @@ samtools: $(AOBJS) libbam.a $(HTSLIB)
 	$(CC) -pthread $(ALL_LDFLAGS) -o $@ $(AOBJS) libbam.a $(HTSLIB_LIB) $(CURSES_LIB) -lm $(ALL_LIBS)
 
 bam_h = bam.h $(htslib_bgzf_h) $(htslib_sam_h)
-bam2bcf_h = bam2bcf.h $(htslib_vcf_h) errmod.h
+bam2bcf_h = bam2bcf.h $(htslib_hts_h) $(htslib_vcf_h)
 bam_lpileup_h = bam_lpileup.h $(htslib_sam_h)
 bam_plbuf_h = bam_plbuf.h $(htslib_sam_h)
 bam_tview_h = bam_tview.h $(htslib_hts_h) $(htslib_sam_h) $(htslib_faidx_h) $(bam2bcf_h) $(htslib_khash_h) $(bam_lpileup_h)
@@ -147,24 +147,24 @@ sam_opts_h = sam_opts.h $(htslib_hts_h)
 sample_h = sample.h $(htslib_kstring_h)
 
 bam.o: bam.c config.h $(bam_h) $(htslib_kstring_h) sam_header.h
-bam2bcf.o: bam2bcf.c config.h $(htslib_sam_h) $(htslib_kstring_h) $(htslib_kfunc_h) $(bam2bcf_h) errmod.h
-bam2bcf_indel.o: bam2bcf_indel.c config.h $(htslib_sam_h) $(bam2bcf_h) kprobaln.h $(htslib_khash_h) $(htslib_ksort_h)
+bam2bcf.o: bam2bcf.c config.h $(htslib_hts_h) $(htslib_sam_h) $(htslib_kstring_h) $(htslib_kfunc_h) $(bam2bcf_h)
+bam2bcf_indel.o: bam2bcf_indel.c config.h $(htslib_hts_h) $(htslib_sam_h) $(bam2bcf_h) $(htslib_khash_h) $(htslib_ksort_h)
 bam2depth.o: bam2depth.c config.h $(htslib_sam_h) samtools.h $(sam_opts_h)
 bam_addrprg.o: bam_addrprg.c config.h $(htslib_sam_h) $(htslib_kstring_h) samtools.h $(sam_opts_h)
 bam_aux.o: bam_aux.c config.h $(bam_h)
-bam_cat.o: bam_cat.c config.h $(htslib_bgzf_h) $(htslib_sam_h) $(htslib_cram_h) $(htslib_khash_h)
+bam_cat.o: bam_cat.c config.h $(htslib_bgzf_h) $(htslib_sam_h) $(htslib_cram_h) $(htslib_khash_h) samtools.h
 bam_color.o: bam_color.c config.h $(bam_h)
 bam_import.o: bam_import.c config.h $(htslib_kstring_h) $(bam_h) $(htslib_kseq_h)
 bam_index.o: bam_index.c config.h $(htslib_hts_h) $(htslib_sam_h) $(htslib_khash_h) samtools.h
 bam_lpileup.o: bam_lpileup.c config.h $(bam_plbuf_h) $(bam_lpileup_h) $(htslib_ksort_h)
-bam_mate.o: bam_mate.c config.h $(sam_opts_h) $(htslib_kstring_h) $(htslib_sam_h)
-bam_md.o: bam_md.c config.h $(htslib_faidx_h) $(htslib_sam_h) $(htslib_kstring_h) kprobaln.h $(sam_opts_h)
+bam_mate.o: bam_mate.c config.h $(sam_opts_h) $(htslib_kstring_h) $(htslib_sam_h) samtools.h
+bam_md.o: bam_md.c config.h $(htslib_faidx_h) $(htslib_sam_h) $(htslib_kstring_h) $(sam_opts_h) samtools.h
 bam_plbuf.o: bam_plbuf.c config.h $(htslib_hts_h) $(htslib_sam_h) $(bam_plbuf_h)
 bam_plcmd.o: bam_plcmd.c config.h $(htslib_sam_h) $(htslib_faidx_h) $(htslib_kstring_h) $(htslib_khash_str2int_h) sam_header.h samtools.h $(sam_opts_h) $(bam2bcf_h) $(sample_h)
-bam_quickcheck.o: bam_quickcheck.c config.h $(htslib_hts_h) $(htslib_sam_h) $(htslib_bgzf_h)
+bam_quickcheck.o: bam_quickcheck.c config.h $(htslib_hts_h) $(htslib_sam_h)
 bam_reheader.o: bam_reheader.c config.h $(htslib_bgzf_h) $(htslib_sam_h) $(htslib_hfile_h) $(htslib_cram_h) samtools.h
-bam_rmdup.o: bam_rmdup.c config.h $(htslib_sam_h) $(sam_opts_h) $(bam_h) $(htslib_khash_h)
-bam_rmdupse.o: bam_rmdupse.c config.h $(bam_h) $(htslib_sam_h) $(htslib_khash_h) $(htslib_klist_h)
+bam_rmdup.o: bam_rmdup.c config.h $(htslib_sam_h) $(sam_opts_h) samtools.h $(bam_h) $(htslib_khash_h)
+bam_rmdupse.o: bam_rmdupse.c config.h $(bam_h) $(htslib_sam_h) $(htslib_khash_h) $(htslib_klist_h) samtools.h
 bam_sort.o: bam_sort.c config.h $(htslib_ksort_h) $(htslib_khash_h) $(htslib_klist_h) $(htslib_kstring_h) $(htslib_sam_h) $(sam_opts_h)
 bam_split.o: bam_split.c config.h $(htslib_sam_h) $(htslib_khash_h) $(htslib_kstring_h) $(sam_opts_h)
 bam_stat.o: bam_stat.c config.h $(htslib_sam_h) samtools.h
@@ -176,13 +176,11 @@ bamshuf.o: bamshuf.c config.h $(htslib_sam_h) $(htslib_hts_h) $(htslib_ksort_h) 
 bamtk.o: bamtk.c config.h $(htslib_hts_h) samtools.h version.h
 bedcov.o: bedcov.c config.h $(htslib_kstring_h) $(htslib_sam_h) $(sam_opts_h) $(htslib_kseq_h)
 bedidx.o: bedidx.c config.h $(htslib_ksort_h) $(htslib_kseq_h) $(htslib_khash_h)
-cut_target.o: cut_target.c config.h $(htslib_sam_h) errmod.h $(htslib_faidx_h) $(sam_opts_h)
+cut_target.o: cut_target.c config.h $(htslib_hts_h) $(htslib_sam_h) $(htslib_faidx_h) $(sam_opts_h)
 dict.o: dict.c config.h $(htslib_kseq_h) $(htslib_hts_h)
-errmod.o: errmod.c config.h errmod.h $(htslib_ksort_h)
 faidx.o: faidx.c config.h $(htslib_faidx_h)
-kprobaln.o: kprobaln.c config.h kprobaln.h
-padding.o: padding.c config.h $(htslib_kstring_h) $(htslib_sam_h) $(htslib_faidx_h) sam_header.h $(sam_opts_h)
-phase.o: phase.c config.h $(htslib_sam_h) errmod.h $(sam_opts_h) $(htslib_kseq_h) $(htslib_khash_h) $(htslib_ksort_h)
+padding.o: padding.c config.h $(htslib_kstring_h) $(htslib_sam_h) $(htslib_faidx_h) sam_header.h $(sam_opts_h) samtools.h
+phase.o: phase.c config.h $(htslib_hts_h) $(htslib_sam_h) $(htslib_kstring_h) $(sam_opts_h) samtools.h $(htslib_kseq_h) $(htslib_khash_h) $(htslib_ksort_h)
 sam.o: sam.c config.h $(htslib_faidx_h) $(sam_h)
 sam_header.o: sam_header.c config.h sam_header.h $(htslib_khash_h)
 sam_opts.o: sam_opts.c config.h $(sam_opts_h)
@@ -289,7 +287,7 @@ install: $(PROGRAMS) $(BUILT_MISC_PROGRAMS)
 testclean:
 	-rm -f test/*.new test/*.tmp test/*/*.new test/*/*.tmp test/*/*.tmp.*
 	-cd test/dat && rm -f test_input_*.bam.bai
-	-cd test/mpileup && rm -f FAIL-*.out* PASS-*.out* anomalous.[bc]*am indels.[bc]*am mpileup.*.[cs]*am mpileup.*.crai overlap50.[bc]*am expected/1.out xx#depth[12].bam*
+	-cd test/mpileup && rm -f FAIL-*.out* PASS-*.out* anomalous.[bc]*am indels.[bc]*am mpileup.*.[cs]*am mpileup.*.crai overlap50.[bc]*am expected/1.out xx#depth*.bam*
 
 mostlyclean: testclean
 	-rm -f *.o misc/*.o test/*.o test/*/*.o version.h
