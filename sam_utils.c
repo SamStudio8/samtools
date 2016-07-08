@@ -1,8 +1,8 @@
-/*  test/test.c -- test harness utility routines.
+/*  sam_utils.c -- various utilities internal to samtools.
 
-    Copyright (C) 2014, 2016 Genome Research Ltd.
+    Copyright (C) 2014-2016 Genome Research Ltd.
 
-    Author: Martin O. Pollard <mp15@sanger.ac.uk>
+    Author: John Marshall <jm18@sanger.ac.uk>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,38 +24,37 @@ DEALINGS IN THE SOFTWARE.  */
 
 #include <config.h>
 
-#include <errno.h>
 #include <stdio.h>
-#include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
-#include <htslib/sam.h>
+#include <errno.h>
 
-#include "test.h"
+#include "samtools.h"
 
-void xfreopen(const char *path, const char *mode, FILE *stream)
+static void vprint_error_core(const char *subcommand, const char *format, va_list args, const char *extra)
 {
-    if (freopen(path, mode, stream) == NULL) {
-        fprintf(stderr, __FILE__": error reopening %s: %s\n",
-                path, strerror(errno));
-        exit(2);
-    }
+    fflush(stdout);
+    if (subcommand && *subcommand) fprintf(stderr, "samtools %s: ", subcommand);
+    else fprintf(stderr, "samtools: ");
+    vfprintf(stderr, format, args);
+    if (extra) fprintf(stderr, ": %s\n", extra);
+    else fprintf(stderr, "\n");
+    fflush(stderr);
 }
 
-void dump_hdr(const bam_hdr_t* hdr)
+void print_error(const char *subcommand, const char *format, ...)
 {
-    printf("n_targets: %d\n", hdr->n_targets);
-    printf("ignore_sam_err: %d\n", hdr->ignore_sam_err);
-    printf("l_text: %u\n", hdr->l_text);
-    printf("idx\ttarget_len\ttarget_name:\n");
-    int32_t target;
-    for (target = 0; target < hdr->n_targets; ++target) {
-        printf("%d\t%u\t\"%s\"\n", target, hdr->target_len[target], hdr->target_name[target]);
-    }
-    printf("text: \"%s\"\n", hdr->text);
+    va_list args;
+    va_start(args, format);
+    vprint_error_core(subcommand, format, args, NULL);
+    va_end(args);
 }
 
-// For tests, just return a constant that can be embedded in expected output.
-const char *samtools_version(void)
+void print_error_errno(const char *subcommand, const char *format, ...)
 {
-    return "x.y.test";
+    int err = errno;
+    va_list args;
+    va_start(args, format);
+    vprint_error_core(subcommand, format, args, err? strerror(err) : NULL);
+    va_end(args);
 }
