@@ -37,7 +37,7 @@ uint64_t* copy_arr(uint64_t *source, int n, int new_n, int filter);
 
 void bamcheck_stats_destroy(bamcheck_stats_t *bamcheck);
 void bamcheck_base_content_baseline(bamcheck_bcd_t *result, double *base_prop, int n);
-void bamcheck_cycles(bamcheck_cycles_t *result, uint64_t *cycles_arr, int n, int k);
+void bamcheck_cycles(bamcheck_cycles_t *result, uint64_t *cycles_arr, uint64_t *cycles_arr_mask, int nbases, int n, int k);
 void bamcheck_baseline_d(bamcheck_baseline_delta *result, uint64_t *baseline, uint64_t *count, int baseline_n, int count_n, double scalar_baseline);
 void bamcheck_baseline_d_double(bamcheck_baseline_delta *result, double *count, int count_n, double baseline);
 void init_bamcheck_baseline_delta(bamcheck_baseline_delta *result, int n);

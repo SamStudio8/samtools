@@ -366,24 +366,42 @@ void bamcheck_baseline_d(bamcheck_baseline_delta *result, uint64_t *baseline, ui
     result->above_max = above_max;
 }
 
-void bamcheck_cycles(bamcheck_cycles_t *result, uint64_t *cycles_arr, int n, int k){
-    uint64_t *count;
-    count = copy_arr(cycles_arr, n, n, 0);
+void bamcheck_cycles(bamcheck_cycles_t *result, uint64_t *cycles_arr, uint64_t *cycles_arr_mask, int nbases, int n, int k){
     uint64_t *baseline;
-    baseline = runmed(cycles_arr, n, k);
+
+    uint64_t masked_cycles[n];
+    size_t i = 0;
+    size_t j = 0;
+    for(; i < nbases; i++){
+        if(cycles_arr_mask[i] == 1){
+            masked_cycles[j] = cycles_arr[i];
+            j++;
+        }
+    }
+    baseline = runmed(masked_cycles, n, k);
 
     // Calculate baseline and counts above/below
     bamcheck_baseline_delta *deviation = calloc(1, sizeof(bamcheck_baseline_delta));
     init_bamcheck_baseline_delta(deviation, n);
-    bamcheck_baseline_d(deviation, baseline, count, n, n, 0);
+    bamcheck_baseline_d(deviation, baseline, masked_cycles, n, n, 0);
 
-    result->pct_above_baseline = (double)deviation->above_total / (double)deviation->total_count * 100;
-    result->pct_below_baseline = (double)deviation->below_total / (double)deviation->total_count * 100;
+    if (deviation->above_total > 0){
+        result->pct_above_baseline = (double)deviation->above_total / (double)deviation->total_count * 100;
+    }
+    else{
+        result->pct_above_baseline = (double)0;
+    }
+
+    if (deviation->below_total > 0){
+        result->pct_below_baseline = (double)deviation->below_total / (double)deviation->total_count * 100;
+    }
+    else{
+        result->pct_below_baseline = (double)0;
+    }
     result->total_count = deviation->total_count;
 
     free(deviation->delta);
     free(deviation);
-    free(count);
     free(baseline);
 }
 
@@ -392,31 +410,35 @@ void bamcheck_indel_peaks(stats_t *curr_stats){
     int k = 25;
     int ilen;
     int ic_lines = 0;
+
+    uint64_t cycles_arr_mask[curr_stats->nbases];
     for (ilen=0; ilen<=curr_stats->nbases; ilen++){
+        cycles_arr_mask[ilen] = 0;
         if ( curr_stats->ins_cycles_1st[ilen]>0 || curr_stats->ins_cycles_2nd[ilen]>0 || curr_stats->del_cycles_1st[ilen]>0 || curr_stats->del_cycles_2nd[ilen]>0 ){
             ic_lines++;
+            cycles_arr_mask[ilen] = 1;
         }
     }
 
     bamcheck_cycles_t *result = calloc(1, sizeof(bamcheck_cycles_t));
     if (ic_lines < k){
-        k = ic_lines/2;
+        k = ic_lines; //TODO Must be odd...
         fprintf(stderr, "Coercing k to %d\n", k);
     }
 
-    bamcheck_cycles(result, curr_stats->ins_cycles_1st, ic_lines, k);
+    bamcheck_cycles(result, curr_stats->ins_cycles_1st, cycles_arr_mask, curr_stats->nbases, ic_lines, k);
     curr_stats->bamcheck->fwd_ins_above_baseline_pct = result->pct_above_baseline;
     curr_stats->bamcheck->fwd_ins_below_baseline_pct = result->pct_below_baseline;
 
-    bamcheck_cycles(result, curr_stats->ins_cycles_2nd, ic_lines, k);
+    bamcheck_cycles(result, curr_stats->ins_cycles_2nd, cycles_arr_mask, curr_stats->nbases, ic_lines, k);
     curr_stats->bamcheck->rev_ins_above_baseline_pct = result->pct_above_baseline;
     curr_stats->bamcheck->rev_ins_below_baseline_pct = result->pct_below_baseline;
 
-    bamcheck_cycles(result, curr_stats->del_cycles_1st, ic_lines, k);
+    bamcheck_cycles(result, curr_stats->del_cycles_1st, cycles_arr_mask, curr_stats->nbases, ic_lines, k);
     curr_stats->bamcheck->fwd_del_above_baseline_pct = result->pct_above_baseline;
     curr_stats->bamcheck->fwd_del_below_baseline_pct = result->pct_below_baseline;
 
-    bamcheck_cycles(result, curr_stats->del_cycles_2nd, ic_lines, k);
+    bamcheck_cycles(result, curr_stats->del_cycles_2nd, cycles_arr_mask, curr_stats->nbases, ic_lines, k);
     curr_stats->bamcheck->rev_del_above_baseline_pct = result->pct_above_baseline;
     curr_stats->bamcheck->rev_del_below_baseline_pct = result->pct_below_baseline;
     free(result);
